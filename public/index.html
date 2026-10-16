@@ -48,6 +48,19 @@
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip { border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; cursor: pointer; user-select: none; font-size: .88rem; }
   .chip.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .chip small { color: var(--muted); margin-left: 4px; }
+  .chip.on small { color: inherit; opacity: .8; }
+  .search-box { position: relative; margin-bottom: 10px; }
+  .search-results { position: absolute; z-index: 10; left: 0; right: 0; top: calc(100% + 4px); background: var(--card);
+                    border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.15);
+                    max-height: 340px; overflow-y: auto; }
+  .search-results div { padding: 8px 12px; cursor: pointer; display: flex; justify-content: space-between; gap: 12px; }
+  .search-results div:hover, .search-results div.sel { background: var(--bg); }
+  .search-results b { white-space: nowrap; }
+  .search-results span { color: var(--muted); font-size: .85rem; text-align: right; }
+  .catalog { margin: 4px 0 8px; }
+  .catalog summary { cursor: pointer; color: var(--accent); font-size: .92rem; }
+  .catalog h3 { font-size: .85rem; color: var(--muted); font-weight: 600; margin: 12px 0 6px; }
   #chart { width: 100%; height: 440px; overflow: hidden; }
   .inline { display: flex; align-items: center; gap: 6px; width: auto; }
   .inline input { width: auto; }
@@ -65,7 +78,17 @@
   <!-- ============ Télécharger ============ -->
   <section id="dl" class="panel active">
     <div class="card">
-      <label for="tickers">Tickers Yahoo Finance (séparés par des virgules ou espaces)</label>
+      <label for="search">🔍 Chercher par nom (entreprise, indice, ETF, crypto…)</label>
+      <div class="search-box">
+        <input id="search" placeholder="ex. OMX Stockholm, TAIEX, LVMH, Straits Times…" autocomplete="off">
+        <div id="searchResults" class="search-results" hidden></div>
+      </div>
+      <details class="catalog">
+        <summary>🌍 Catalogue des grands indices mondiaux (clic = ajouter)</summary>
+        <div id="catalog"></div>
+      </details>
+
+      <label for="tickers" style="margin-top:14px">Tickers à télécharger (séparés par des virgules ou espaces)</label>
       <input id="tickers" value="AAPL, MSFT, MC.PA">
       <p class="hint">Exemples : <code>AAPL</code> Apple · <code>MC.PA</code> LVMH · <code>^FCHI</code> CAC 40 ·
         <code>^GSPC</code> S&amp;P 500 · <code>BTC-USD</code> Bitcoin · <code>EURUSD=X</code> euro/dollar.
@@ -200,6 +223,97 @@ document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
   b.classList.add("active"); $(b.dataset.tab).classList.add("active");
   if (b.dataset.tab === "db") loadSummary();
 });
+
+// ---------- Recherche par nom + catalogue ----------
+const CATALOG = {
+  "Europe": [
+    ["^FCHI", "CAC 40 (France)"], ["^SBF120", "SBF 120 (France)"], ["^GDAXI", "DAX (Allemagne)"],
+    ["^FTSE", "FTSE 100 (Royaume-Uni)"], ["^STOXX50E", "Euro Stoxx 50"], ["^STOXX", "Stoxx Europe 600"],
+    ["^IBEX", "IBEX 35 (Espagne)"], ["FTSEMIB.MI", "FTSE MIB (Italie)"], ["^AEX", "AEX (Pays-Bas)"],
+    ["^BFX", "BEL 20 (Belgique)"], ["^SSMI", "SMI (Suisse)"], ["^ATX", "ATX (Autriche)"],
+    ["PSI20.LS", "PSI (Portugal)"], ["^OMX", "OMX Stockholm 30 (Suède)"], ["^OMXC25", "OMX Copenhague 25 (Danemark)"],
+    ["^OMXH25", "OMX Helsinki 25 (Finlande)"], ["OSEBX.OL", "OBX / Oslo (Norvège)"], ["WIG20.WA", "WIG 20 (Pologne)"],
+    ["XU100.IS", "BIST 100 (Turquie)"],
+  ],
+  "Amériques": [
+    ["^GSPC", "S&P 500 (États-Unis)"], ["^DJI", "Dow Jones (États-Unis)"], ["^IXIC", "Nasdaq Composite"],
+    ["^NDX", "Nasdaq 100"], ["^RUT", "Russell 2000"], ["^VIX", "VIX (volatilité)"], ["^GSPTSE", "S&P/TSX (Canada)"],
+    ["^MXX", "S&P/BMV IPC (Mexique)"], ["^BVSP", "Ibovespa (Brésil)"], ["^MERV", "Merval (Argentine)"],
+    ["^IPSA", "S&P IPSA (Chili)"],
+  ],
+  "Asie-Pacifique": [
+    ["^N225", "Nikkei 225 (Japon)"], ["^HSI", "Hang Seng (Hong Kong)"], ["000001.SS", "SSE Composite (Shanghai)"],
+    ["399001.SZ", "SZSE Component (Shenzhen)"], ["^TWII", "TAIEX (Taïwan)"], ["^KS11", "KOSPI (Corée du Sud)"],
+    ["^STI", "Straits Times Index (Singapour)"], ["^NSEI", "Nifty 50 (Inde)"], ["^BSESN", "Sensex (Inde)"],
+    ["^AXJO", "S&P/ASX 200 (Australie)"], ["^NZ50", "NZX 50 (Nouvelle-Zélande)"], ["^JKSE", "IDX Composite (Indonésie)"],
+    ["^KLSE", "FTSE Bursa Malaysia KLCI"], ["^SET.BK", "SET (Thaïlande)"], ["PSEI.PS", "PSEi (Philippines)"],
+  ],
+  "Afrique & Moyen-Orient": [
+    ["^J203.JO", "JSE All Share (Afrique du Sud)"], ["^J200.JO", "JSE Top 40 (Afrique du Sud)"],
+    ["^CASE30", "EGX 30 (Égypte)"], ["^TA125.TA", "TA-125 (Israël)"], ["^TASI.SR", "Tadawul (Arabie saoudite)"],
+  ],
+};
+
+const currentTickers = () => $("tickers").value.toUpperCase().split(/[\s,;]+/).filter(Boolean);
+function addTicker(sym) {
+  const list = currentTickers();
+  if (!list.includes(sym.toUpperCase())) list.push(sym);
+  $("tickers").value = list.join(", ");
+  renderCatalog();
+}
+function renderCatalog() {
+  const have = new Set(currentTickers());
+  $("catalog").innerHTML = Object.entries(CATALOG).map(([region, items]) =>
+    `<h3>${esc(region)}</h3><div class="chips">${items.map(([s, n]) =>
+      `<span class="chip ${have.has(s.toUpperCase()) ? "on" : ""}" data-s="${esc(s)}" title="${esc(s)}">${esc(n)}<small>${esc(s)}</small></span>`).join("")}</div>`
+  ).join("");
+  $("catalog").querySelectorAll(".chip").forEach((c) => c.onclick = () => {
+    const s = c.dataset.s;
+    if (have.has(s.toUpperCase())) $("tickers").value = currentTickers().filter((t) => t !== s.toUpperCase()).join(", ");
+    else return addTicker(s);
+    renderCatalog();
+  });
+}
+renderCatalog();
+$("tickers").addEventListener("input", renderCatalog);
+
+let searchTimer, searchSeq = 0, searchItems = [], searchSel = -1;
+function showResults(html) { $("searchResults").innerHTML = html; $("searchResults").hidden = !html; }
+function pick(i) {
+  const r = searchItems[i]; if (!r) return;
+  addTicker(r.symbol); $("search").value = ""; showResults("");
+}
+$("search").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  const q = $("search").value.trim();
+  if (q.length < 2) return showResults("");
+  searchTimer = setTimeout(async () => {
+    const seq = ++searchSeq;
+    showResults('<div><span>Recherche…</span></div>');
+    try {
+      const { results } = await api("/api/search?q=" + encodeURIComponent(q));
+      if (seq !== searchSeq) return; // une recherche plus récente est en cours
+      searchItems = results; searchSel = -1;
+      showResults(results.length
+        ? results.map((r, i) => `<div data-i="${i}"><b>${esc(r.symbol)}</b><span>${esc(r.name || "")}${r.exchange ? " · " + esc(r.exchange) : ""}${r.type ? " · " + esc(r.type) : ""}</span></div>`).join("")
+        : '<div><span>Aucun résultat. Essaie en anglais (ex. « Taiwan », « Stockholm », « Johannesburg »).</span></div>');
+      $("searchResults").querySelectorAll("[data-i]").forEach((d) => d.onmousedown = (e) => { e.preventDefault(); pick(+d.dataset.i); });
+    } catch (e) {
+      if (seq === searchSeq) showResults(`<div><span class="err">❌ ${esc(e.message)}</span></div>`);
+    }
+  }, 300);
+});
+$("search").addEventListener("keydown", (e) => {
+  const rows = $("searchResults").querySelectorAll("[data-i]");
+  if (!rows.length) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    searchSel = (searchSel + (e.key === "ArrowDown" ? 1 : -1) + rows.length) % rows.length;
+    rows.forEach((r, i) => r.classList.toggle("sel", i === searchSel));
+  } else if (e.key === "Enter") { e.preventDefault(); pick(Math.max(searchSel, 0)); }
+  else if (e.key === "Escape") showResults("");
+});
+$("search").addEventListener("blur", () => setTimeout(() => showResults(""), 150));
 
 // ---------- Télécharger ----------
 const today = new Date().toISOString().slice(0, 10);

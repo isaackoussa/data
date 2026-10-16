@@ -68,13 +68,31 @@ export function parseChart(json: any, interval: string): { info: Info; rows: Row
   return { info, rows: [...byDate.values()] };
 }
 
+const HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36",
+  Accept: "application/json",
+};
+
+export type SearchResult = { symbol: string; name: string | null; exchange: string | null; type: string | null };
+
+/** Recherche de tickers par nom ("OMX Stockholm 30", "LVMH", "Taiwan"...). */
+export async function searchSymbols(q: string): Promise<SearchResult[]> {
+  const params = new URLSearchParams({ q, quotesCount: "10", newsCount: "0", listsCount: "0", enableFuzzyQuery: "true" });
+  const resp = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?${params}`, { headers: HEADERS });
+  const json: any = await resp.json().catch(() => null);
+  if (!json) throw new Error(`Yahoo a répondu ${resp.status}`);
+  return (json.quotes || [])
+    .filter((x: any) => x.symbol)
+    .map((x: any) => ({
+      symbol: x.symbol,
+      name: x.longname || x.shortname || null,
+      exchange: x.exchDisp || x.exchange || null,
+      type: x.typeDisp || x.quoteType || null,
+    }));
+}
+
 export async function fetchPrices(ticker: string, o: Options) {
-  const resp = await fetch(buildUrl(ticker, o), {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36",
-      Accept: "application/json",
-    },
-  });
+  const resp = await fetch(buildUrl(ticker, o), { headers: HEADERS });
   if (resp.status === 404) throw new Error("ticker introuvable");
   const json = await resp.json().catch(() => null);
   if (!json) throw new Error(`Yahoo a répondu ${resp.status}`);
