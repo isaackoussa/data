@@ -80,11 +80,11 @@
     <div class="card">
       <label for="search">🔍 Chercher par nom (entreprise, indice, ETF, crypto…)</label>
       <div class="search-box">
-        <input id="search" placeholder="ex. OMX Stockholm, TAIEX, LVMH, Straits Times…" autocomplete="off">
+        <input id="search" placeholder="ex. Suède, Taïwan, Singapour, LVMH, or, pétrole, bitcoin…" autocomplete="off">
         <div id="searchResults" class="search-results" hidden></div>
       </div>
       <details class="catalog">
-        <summary>🌍 Catalogue des grands indices mondiaux (clic = ajouter)</summary>
+        <summary>🌍 Catalogue : indices mondiaux, matières premières, devises, cryptos (clic = ajouter)</summary>
         <div id="catalog"></div>
       </details>
 
@@ -249,34 +249,74 @@ document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
 });
 
 // ---------- Recherche par nom + catalogue ----------
+// [ticker, nom affiché, synonymes pour la recherche (pays, villes, autres noms)]
 const CATALOG = {
   "Europe": [
-    ["^FCHI", "CAC 40 (France)"], ["^SBF120", "SBF 120 (France)"], ["^GDAXI", "DAX (Allemagne)"],
-    ["^FTSE", "FTSE 100 (Royaume-Uni)"], ["^STOXX50E", "Euro Stoxx 50"], ["^STOXX", "Stoxx Europe 600"],
-    ["^IBEX", "IBEX 35 (Espagne)"], ["FTSEMIB.MI", "FTSE MIB (Italie)"], ["^AEX", "AEX (Pays-Bas)"],
-    ["^BFX", "BEL 20 (Belgique)"], ["^SSMI", "SMI (Suisse)"], ["^ATX", "ATX (Autriche)"],
-    ["PSI20.LS", "PSI (Portugal)"], ["^OMX", "OMX Stockholm 30 (Suède)"], ["^OMXC25", "OMX Copenhague 25 (Danemark)"],
-    ["^OMXH25", "OMX Helsinki 25 (Finlande)"], ["OSEBX.OL", "OBX / Oslo (Norvège)"], ["WIG20.WA", "WIG 20 (Pologne)"],
-    ["XU100.IS", "BIST 100 (Turquie)"],
+    ["^FCHI", "CAC 40 (France)", "paris euronext francais"], ["^SBF120", "SBF 120 (France)", "paris euronext"],
+    ["^GDAXI", "DAX (Allemagne)", "germany francfort frankfurt dax40 xetra"],
+    ["^FTSE", "FTSE 100 (Royaume-Uni)", "uk london londres angleterre footsie"],
+    ["^STOXX50E", "Euro Stoxx 50", "europe zone euro eurostoxx"], ["^STOXX", "Stoxx Europe 600", "europe stoxx600"],
+    ["^IBEX", "IBEX 35 (Espagne)", "spain madrid"], ["FTSEMIB.MI", "FTSE MIB (Italie)", "italy milan milano"],
+    ["^AEX", "AEX (Pays-Bas)", "netherlands amsterdam hollande"], ["^BFX", "BEL 20 (Belgique)", "belgium bruxelles brussels"],
+    ["^SSMI", "SMI (Suisse)", "switzerland zurich swiss"], ["^ATX", "ATX (Autriche)", "austria vienne wien"],
+    ["PSI20.LS", "PSI (Portugal)", "lisbonne lisbon psi20 euronext"],
+    ["^OMX", "OMX Stockholm 30 (Suède)", "sweden omxs30 nasdaq nordic"],
+    ["^OMXC25", "OMX Copenhague 25 (Danemark)", "denmark copenhagen omxc25 nasdaq nordic"],
+    ["^OMXH25", "OMX Helsinki 25 (Finlande)", "finland omxh25 nasdaq nordic"],
+    ["OSEBX.OL", "Oslo Børs (Norvège)", "norway oslo obx osebx"], ["WIG20.WA", "WIG 20 (Pologne)", "poland varsovie warsaw"],
+    ["XU100.IS", "BIST 100 (Turquie)", "turkey istanbul borsa"],
   ],
   "Amériques": [
-    ["^GSPC", "S&P 500 (États-Unis)"], ["^DJI", "Dow Jones (États-Unis)"], ["^IXIC", "Nasdaq Composite"],
-    ["^NDX", "Nasdaq 100"], ["^RUT", "Russell 2000"], ["^VIX", "VIX (volatilité)"], ["^GSPTSE", "S&P/TSX (Canada)"],
-    ["^MXX", "S&P/BMV IPC (Mexique)"], ["^BVSP", "Ibovespa (Brésil)"], ["^MERV", "Merval (Argentine)"],
-    ["^IPSA", "S&P IPSA (Chili)"],
+    ["^GSPC", "S&P 500 (États-Unis)", "usa us america sp500 standard poors"], ["^DJI", "Dow Jones (États-Unis)", "usa us dow djia industrial"],
+    ["^IXIC", "Nasdaq Composite (États-Unis)", "usa us tech"], ["^NDX", "Nasdaq 100 (États-Unis)", "usa us tech"],
+    ["^RUT", "Russell 2000 (États-Unis)", "usa us small caps"], ["^VIX", "VIX (volatilité)", "volatility peur fear"],
+    ["^GSPTSE", "S&P/TSX (Canada)", "toronto tsx"], ["^MXX", "S&P/BMV IPC (Mexique)", "mexico ipc bmv mexique"],
+    ["^BVSP", "Ibovespa (Brésil)", "brazil sao paulo bovespa b3"], ["^MERV", "Merval (Argentine)", "argentina buenos aires"],
+    ["^IPSA", "S&P IPSA (Chili)", "chile santiago"],
   ],
   "Asie-Pacifique": [
-    ["^N225", "Nikkei 225 (Japon)"], ["^HSI", "Hang Seng (Hong Kong)"], ["000001.SS", "SSE Composite (Shanghai)"],
-    ["399001.SZ", "SZSE Component (Shenzhen)"], ["^TWII", "TAIEX (Taïwan)"], ["^KS11", "KOSPI (Corée du Sud)"],
-    ["^STI", "Straits Times Index (Singapour)"], ["^NSEI", "Nifty 50 (Inde)"], ["^BSESN", "Sensex (Inde)"],
-    ["^AXJO", "S&P/ASX 200 (Australie)"], ["^NZ50", "NZX 50 (Nouvelle-Zélande)"], ["^JKSE", "IDX Composite (Indonésie)"],
-    ["^KLSE", "FTSE Bursa Malaysia KLCI"], ["^SET.BK", "SET (Thaïlande)"], ["PSEI.PS", "PSEi (Philippines)"],
+    ["^N225", "Nikkei 225 (Japon)", "japan tokyo"], ["^HSI", "Hang Seng (Hong Kong)", "hongkong hk chine china"],
+    ["000001.SS", "SSE Composite (Shanghai, Chine)", "china shanghai"], ["399001.SZ", "SZSE Component (Shenzhen, Chine)", "china shenzhen"],
+    ["^TWII", "TAIEX (Taïwan)", "taiwan taipei twse"], ["^KS11", "KOSPI (Corée du Sud)", "korea seoul coree"],
+    ["^STI", "Straits Times Index (Singapour)", "singapore sti"], ["^NSEI", "Nifty 50 (Inde)", "india nse mumbai"],
+    ["^BSESN", "Sensex (Inde)", "india bse mumbai bombay"], ["^AXJO", "S&P/ASX 200 (Australie)", "australia sydney asx"],
+    ["^NZ50", "NZX 50 (Nouvelle-Zélande)", "new zealand wellington"], ["^JKSE", "IDX Composite (Indonésie)", "indonesia jakarta"],
+    ["^KLSE", "FTSE Bursa Malaysia KLCI (Malaisie)", "malaysia kuala lumpur"], ["^SET.BK", "SET (Thaïlande)", "thailand bangkok"],
+    ["PSEI.PS", "PSEi (Philippines)", "manila manille"],
   ],
   "Afrique & Moyen-Orient": [
-    ["^J203.JO", "JSE All Share (Afrique du Sud)"], ["^J200.JO", "JSE Top 40 (Afrique du Sud)"],
-    ["^CASE30", "EGX 30 (Égypte)"], ["^TA125.TA", "TA-125 (Israël)"], ["^TASI.SR", "Tadawul (Arabie saoudite)"],
+    ["^J203.JO", "JSE All Share (Afrique du Sud)", "south africa johannesburg jse alsi"],
+    ["^J200.JO", "JSE Top 40 (Afrique du Sud)", "south africa johannesburg jse"],
+    ["^CASE30", "EGX 30 (Égypte)", "egypt cairo le caire"], ["^TA125.TA", "TA-125 (Israël)", "israel tel aviv"],
+    ["^TASI.SR", "Tadawul (Arabie saoudite)", "saudi arabia riyad tasi"],
+  ],
+  "Matières premières": [
+    ["GC=F", "Or", "gold"], ["SI=F", "Argent (métal)", "silver"], ["CL=F", "Pétrole WTI", "oil crude petrole"],
+    ["BZ=F", "Pétrole Brent", "oil crude petrole"], ["NG=F", "Gaz naturel", "natural gas"], ["HG=F", "Cuivre", "copper"],
+    ["ZW=F", "Blé", "wheat ble"], ["KC=F", "Café", "coffee"],
+  ],
+  "Devises": [
+    ["EURUSD=X", "Euro / Dollar", "eur usd change"], ["EURGBP=X", "Euro / Livre sterling", "eur gbp pound"],
+    ["EURJPY=X", "Euro / Yen", "eur jpy"], ["EURCHF=X", "Euro / Franc suisse", "eur chf"],
+    ["USDJPY=X", "Dollar / Yen", "usd jpy"], ["DX-Y.NYB", "Dollar Index (DXY)", "usd dxy indice dollar"],
+  ],
+  "Cryptos": [
+    ["BTC-USD", "Bitcoin (USD)", "btc crypto"], ["ETH-USD", "Ethereum (USD)", "eth crypto"],
+    ["BTC-EUR", "Bitcoin (EUR)", "btc crypto"], ["SOL-USD", "Solana (USD)", "sol crypto"],
   ],
 };
+const norm = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9^.=&-]+/g, " ").trim();
+const CATALOG_INDEX = Object.entries(CATALOG).flatMap(([region, items]) =>
+  items.map(([symbol, name, aliases]) => ({ symbol, name, region, words: norm(`${symbol} ${name} ${aliases || ""} ${region}`).split(" ") })));
+
+/** Recherche dans le catalogue : chaque mot tapé doit être le début d'un mot du nom, du pays ou des synonymes
+ *  (sans accents ni majuscules) : « or » trouve l'Or mais pas « Stockholm ». */
+function searchCatalog(q) {
+  const words = norm(q).split(" ").filter(Boolean);
+  if (!words.length) return [];
+  return CATALOG_INDEX.filter((c) => words.every((w) => c.words.some((h) => h.startsWith(w))))
+    .map((c) => ({ symbol: c.symbol, name: c.name, exchange: c.region, type: "catalogue", local: true }));
+}
 
 const currentTickers = () => $("tickers").value.toUpperCase().split(/[\s,;]+/).filter(Boolean);
 function addTicker(sym) {
@@ -307,25 +347,32 @@ function pick(i) {
   const r = searchItems[i]; if (!r) return;
   addTicker(r.symbol); $("search").value = ""; showResults("");
 }
+function renderResults(items, footer = "") {
+  searchItems = items; searchSel = -1;
+  showResults(items.map((r, i) => `<div data-i="${i}"><b>${r.local ? "⭐ " : ""}${esc(r.symbol)}</b><span>${esc(r.name || "")}${
+    r.exchange ? " · " + esc(r.exchange) : ""}${r.type && !r.local ? " · " + esc(r.type) : ""}</span></div>`).join("") + footer);
+  $("searchResults").querySelectorAll("[data-i]").forEach((d) => d.onmousedown = (e) => { e.preventDefault(); pick(+d.dataset.i); });
+}
 $("search").addEventListener("input", () => {
   clearTimeout(searchTimer);
   const q = $("search").value.trim();
   if (q.length < 2) return showResults("");
+  const seq = ++searchSeq;
+  const local = searchCatalog(q);
+  // les résultats du catalogue s'affichent tout de suite, Yahoo complète ensuite
+  renderResults(local, '<div><span>Recherche sur Yahoo Finance…</span></div>');
   searchTimer = setTimeout(async () => {
-    const seq = ++searchSeq;
-    showResults('<div><span>Recherche…</span></div>');
     try {
       const { results } = await api("/api/search?q=" + encodeURIComponent(q));
       if (seq !== searchSeq) return; // une recherche plus récente est en cours
-      searchItems = results; searchSel = -1;
-      showResults(results.length
-        ? results.map((r, i) => `<div data-i="${i}"><b>${esc(r.symbol)}</b><span>${esc(r.name || "")}${r.exchange ? " · " + esc(r.exchange) : ""}${r.type ? " · " + esc(r.type) : ""}</span></div>`).join("")
-        : '<div><span>Aucun résultat. Essaie en anglais (ex. « Taiwan », « Stockholm », « Johannesburg »).</span></div>');
-      $("searchResults").querySelectorAll("[data-i]").forEach((d) => d.onmousedown = (e) => { e.preventDefault(); pick(+d.dataset.i); });
+      const seen = new Set(local.map((r) => r.symbol.toUpperCase()));
+      const all = [...local, ...results.filter((r) => !seen.has(r.symbol.toUpperCase()))];
+      if (all.length) renderResults(all);
+      else showResults('<div><span>Aucun résultat. Essaie un autre nom, le pays ou la ville de la bourse, ou le nom en anglais.</span></div>');
     } catch (e) {
-      if (seq === searchSeq) showResults(`<div><span class="err">❌ ${esc(e.message)}</span></div>`);
+      if (seq === searchSeq) renderResults(local, `<div><span class="err">❌ Yahoo : ${esc(e.message)}</span></div>`);
     }
-  }, 300);
+  }, 350);
 });
 $("search").addEventListener("keydown", (e) => {
   const rows = $("searchResults").querySelectorAll("[data-i]");

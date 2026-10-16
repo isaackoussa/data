@@ -75,20 +75,37 @@ const HEADERS = {
 
 export type SearchResult = { symbol: string; name: string | null; exchange: string | null; type: string | null };
 
-/** Recherche de tickers par nom ("OMX Stockholm 30", "LVMH", "Taiwan"...). */
-export async function searchSymbols(q: string): Promise<SearchResult[]> {
-  const params = new URLSearchParams({ q, quotesCount: "10", newsCount: "0", listsCount: "0", enableFuzzyQuery: "true" });
+// Types gardés (on écarte options, warrants, etc.) et leur libellé en français
+const TYPES: Record<string, string> = {
+  EQUITY: "Action", ETF: "ETF", INDEX: "Indice", MUTUALFUND: "Fonds", CURRENCY: "Devise",
+  CRYPTOCURRENCY: "Crypto", FUTURE: "Contrat à terme",
+};
+
+async function yahooSearch(q: string, fuzzy: boolean): Promise<SearchResult[]> {
+  const params = new URLSearchParams({
+    q, quotesCount: "12", newsCount: "0", listsCount: "0", enableFuzzyQuery: String(fuzzy),
+  });
   const resp = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?${params}`, { headers: HEADERS });
   const json: any = await resp.json().catch(() => null);
   if (!json) throw new Error(`Yahoo a répondu ${resp.status}`);
   return (json.quotes || [])
-    .filter((x: any) => x.symbol)
+    .filter((x: any) => x.symbol && TYPES[x.quoteType])
     .map((x: any) => ({
       symbol: x.symbol,
       name: x.longname || x.shortname || null,
       exchange: x.exchDisp || x.exchange || null,
-      type: x.typeDisp || x.quoteType || null,
+      type: TYPES[x.quoteType],
     }));
+}
+
+/** Recherche de tickers par nom ("OMX Stockholm 30", "LVMH", "Taiwan"...).
+ *  Recherche stricte d'abord ; la recherche "floue" de Yahoo (souvent à côté) seulement si rien n'est trouvé. */
+export async function searchSymbols(q: string): Promise<SearchResult[]> {
+  const strict = await yahooSearch(q, false);
+  const results = strict.length ? strict : await yahooSearch(q, true);
+  // un ticker tapé tel quel (ex. "MC.PA") passe en tête
+  const exact = q.trim().toUpperCase();
+  return results.sort((a, b) => Number(b.symbol.toUpperCase() === exact) - Number(a.symbol.toUpperCase() === exact));
 }
 
 export async function fetchPrices(ticker: string, o: Options) {
