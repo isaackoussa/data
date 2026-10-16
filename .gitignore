@@ -3,3 +3,5 @@ __pycache__/
 .venv/
 *.db
 exports/
+node_modules/
+.netlify/

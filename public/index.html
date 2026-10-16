@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ma base boursière</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
+<style>
+  :root {
+    --bg: #f7f8fa; --card: #ffffff; --text: #1a1d23; --muted: #6b7280; --border: #e3e6eb;
+    --accent: #2563eb; --accent-text: #ffffff; --ok: #15803d; --err: #b91c1c; --warn: #b45309;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --card: #171a21; --text: #e6e8ec; --muted: #9aa1ad; --border: #2a2f39;
+      --accent: #3b82f6; --accent-text: #ffffff; --ok: #4ade80; --err: #f87171; --warn: #fbbf24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 16px; }
+  h2 { font-size: 1.1rem; margin: 24px 0 8px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
+  .tabs button { background: none; border: none; color: var(--muted); padding: 10px 14px; font: inherit;
+                 cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
+  .tabs button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  .panel { display: none; } .panel.active { display: block; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+  input, select, textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+                            background: var(--bg); color: var(--text); font: inherit; }
+  textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; min-height: 130px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin: 12px 0; }
+  .btn { background: var(--accent); color: var(--accent-text); border: none; border-radius: 6px; padding: 9px 16px;
+         font: inherit; font-weight: 600; cursor: pointer; }
+  .btn.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); font-weight: 500; }
+  .btn:disabled { opacity: .5; cursor: wait; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .hint { color: var(--muted); font-size: .88rem; }
+  code { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; font-size: .85em; }
+  .table-wrap { overflow: auto; max-height: 420px; border: 1px solid var(--border); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+  th { position: sticky; top: 0; background: var(--card); font-weight: 600; }
+  .ok { color: var(--ok); } .err { color: var(--err); } .warn { color: var(--warn); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; cursor: pointer; user-select: none; font-size: .88rem; }
+  .chip.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  #chart { width: 100%; height: 440px; overflow: hidden; }
+  .inline { display: flex; align-items: center; gap: 6px; width: auto; }
+  .inline input { width: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>📈 Ma base de données boursières</h1>
+  <nav class="tabs">
+    <button data-tab="dl" class="active">⬇️ Télécharger</button>
+    <button data-tab="db">🗄️ Ma base</button>
+    <button data-tab="sql">🔎 Requête SQL</button>
+  </nav>
+
+  <!-- ============ Télécharger ============ -->
+  <section id="dl" class="panel active">
+    <div class="card">
+      <label for="tickers">Tickers Yahoo Finance (séparés par des virgules ou espaces)</label>
+      <input id="tickers" value="AAPL, MSFT, MC.PA">
+      <p class="hint">Exemples : <code>AAPL</code> Apple · <code>MC.PA</code> LVMH · <code>^FCHI</code> CAC 40 ·
+        <code>^GSPC</code> S&amp;P 500 · <code>BTC-USD</code> Bitcoin · <code>EURUSD=X</code> euro/dollar.
+        Suffixes : <code>.PA</code> Paris, <code>.DE</code> Francfort, <code>.L</code> Londres, <code>.MI</code> Milan.</p>
+      <div class="grid">
+        <div><label for="interval">Intervalle</label>
+          <select id="interval">
+            <option value="1d">Journalier</option><option value="1wk">Hebdomadaire</option><option value="1mo">Mensuel</option>
+            <option value="1h">1 heure</option><option value="30m">30 min</option><option value="15m">15 min</option>
+            <option value="5m">5 min</option><option value="1m">1 min</option>
+          </select></div>
+        <div><label for="mode">Période</label>
+          <select id="mode"><option value="period">Durée prédéfinie</option><option value="dates">Dates précises</option></select></div>
+        <div id="periodBox"><label for="period">Durée</label>
+          <select id="period">
+            <option>1mo</option><option>3mo</option><option>6mo</option><option selected>1y</option><option>2y</option>
+            <option>5y</option><option>10y</option><option value="ytd">depuis le 1er janvier</option><option value="max">tout l'historique</option>
+          </select></div>
+        <div class="dateBox" hidden><label for="start">Du</label><input id="start" type="date"></div>
+        <div class="dateBox" hidden><label for="end">Au</label><input id="end" type="date"></div>
+      </div>
+      <p class="hint">L'intraday a un historique limité par Yahoo (7 jours pour 1 min, 60 jours pour 5–30 min, ~2 ans pour 1 h).</p>
+      <button class="btn" id="dlBtn">🚀 Télécharger et enregistrer dans la base</button>
+      <div id="dlResult" style="margin-top:12px"></div>
+    </div>
+  </section>
+
+  <!-- ============ Ma base ============ -->
+  <section id="db" class="panel">
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h2 style="margin:0">Contenu de la base</h2>
+        <button class="btn secondary" id="refreshBtn">↻ Actualiser</button></div>
+      <div id="summary" style="margin-top:12px"></div>
+    </div>
+    <div class="card" id="viewCard" hidden>
+      <h2 style="margin-top:0">Consulter / exporter</h2>
+      <div class="grid">
+        <div><label for="dbInterval">Intervalle</label><select id="dbInterval"></select></div>
+        <div><label for="dbStart">Du</label><input id="dbStart" type="date"></div>
+        <div><label for="dbEnd">Au</label><input id="dbEnd" type="date"></div>
+      </div>
+      <label>Actions (clique pour sélectionner)</label>
+      <div class="chips" id="chips"></div>
+      <div class="row" style="margin:12px 0">
+        <label class="inline"><input type="checkbox" id="base100"> Comparer en base 100</label>
+      </div>
+      <div id="chart"></div>
+      <h2>Statistiques</h2>
+      <div id="stats"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="csvBtn">⬇️ CSV</button>
+        <button class="btn" id="xlsxBtn">⬇️ Excel</button>
+        <button class="btn secondary" id="rawBtn">Voir les données brutes</button>
+      </div>
+      <div id="raw" style="margin-top:12px"></div>
+    </div>
+  </section>
+
+  <!-- ============ SQL ============ -->
+  <section id="sql" class="panel">
+    <div class="card">
+      <p class="hint">Interroge toute ta base en SQL (SQLite, exécuté dans ton navigateur : tes données stockées ne sont jamais modifiées).<br>
+        Tables : <code>prices(ticker, interval, date, open, high, low, close, adj_close, volume)</code> et
+        <code>tickers(ticker, name, exchange, currency, type)</code>.</p>
+      <textarea id="sqlText">SELECT ticker, substr(date, 1, 7) AS mois, ROUND(AVG(close), 2) AS cours_moyen, SUM(volume) AS volume
+FROM prices WHERE interval = '1d'
+GROUP BY ticker, mois ORDER BY ticker, mois</textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="sqlBtn">▶️ Exécuter</button>
+        <button class="btn secondary" id="sqlCsv" hidden>⬇️ CSV</button>
+        <button class="btn secondary" id="sqlXlsx" hidden>⬇️ Excel</button>
+      </div>
+      <div id="sqlResult" style="margin-top:12px"></div>
+    </div>
+  </section>
+</main>
+
+<script src="vendor/plotly.min.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/sql-wasm.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const COLS = ["date", "open", "high", "low", "close", "adj_close", "volume"];
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (v) => (typeof v === "number" ? v.toLocaleString("fr-FR", { maximumFractionDigits: 4 }) : v ?? "");
+
+// ---------- appels API (avec mot de passe optionnel) ----------
+function getPwd() { try { return localStorage.getItem("app_pwd") || ""; } catch { return ""; } }
+function setPwd(p) { try { localStorage.setItem("app_pwd", p); } catch {} }
+async function api(path, opts = {}, retry = true) {
+  const resp = await fetch(path, { ...opts, headers: { "content-type": "application/json", "x-app-password": getPwd(), ...(opts.headers || {}) } });
+  if (resp.status === 401 && retry) {
+    const p = prompt("Mot de passe de l'application :");
+    if (p == null) throw new Error("mot de passe requis");
+    setPwd(p);
+    return api(path, opts, false);
+  }
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.error || `erreur ${resp.status}`);
+  return data;
+}
+
+// ---------- tableaux / exports ----------
+function table(rows, cols) {
+  if (!rows.length) return '<p class="hint">Aucune ligne.</p>';
+  cols = cols || Object.keys(rows[0]);
+  return `<div class="table-wrap"><table><thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${
+    rows.map((r) => `<tr>${cols.map((c) => `<td>${esc(fmt(r[c]))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+function saveFile(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function exportCsv(rows, name) {
+  const ws = XLSX.utils.json_to_sheet(rows);
+  saveFile(new Blob(["﻿" + XLSX.utils.sheet_to_csv(ws)], { type: "text/csv" }), name + ".csv");
+}
+function exportXlsx(rows, name) {
+  const wb = XLSX.utils.book_new();
+  const groups = {};
+  rows.forEach((r) => (groups[r.ticker || "donnees"] ||= []).push(r));
+  const keys = Object.keys(groups);
+  if (keys.length > 1) keys.forEach((k) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(groups[k]), k.replace(/[\\/?*\[\]:]/g, "_").slice(0, 31)));
+  else XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "donnees");
+  XLSX.writeFile(wb, name + ".xlsx");
+}
+
+// ---------- onglets ----------
+document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll(".tabs button, .panel").forEach((e) => e.classList.remove("active"));
+  b.classList.add("active"); $(b.dataset.tab).classList.add("active");
+  if (b.dataset.tab === "db") loadSummary();
+});
+
+// ---------- Télécharger ----------
+const today = new Date().toISOString().slice(0, 10);
+$("end").value = today;
+$("start").value = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
+$("mode").onchange = () => {
+  const dates = $("mode").value === "dates";
+  $("periodBox").hidden = dates;
+  document.querySelectorAll(".dateBox").forEach((e) => (e.hidden = !dates));
+};
+$("dlBtn").onclick = async () => {
+  const btn = $("dlBtn"); btn.disabled = true; btn.textContent = "⏳ Téléchargement…";
+  const body = { tickers: $("tickers").value, interval: $("interval").value };
+  if ($("mode").value === "dates") Object.assign(body, { start: $("start").value, end: $("end").value });
+  else body.period = $("period").value;
+  try {
+    const { results } = await api("/api/download", { method: "POST", body: JSON.stringify(body) });
+    $("dlResult").innerHTML = table(results.map((r) => ({
+      ticker: r.ticker, nom: r.nom || "", "lignes reçues": r.lignes, "total en base": r.total ?? "",
+      statut: r.statut === "ok" ? "✅ OK" : (r.lignes === 0 && !r.statut.startsWith("erreur") ? "⚠️ " : "❌ ") + r.statut,
+    })));
+    cache.clear();
+  } catch (e) {
+    $("dlResult").innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`;
+  } finally { btn.disabled = false; btn.textContent = "🚀 Télécharger et enregistrer dans la base"; }
+};
+
+// ---------- Ma base ----------
+let SUMMARY = [];
+const selected = new Set();
+const cache = new Map(); // "interval|ticker" -> doc
+let current = []; // lignes affichées (pour export)
+
+async function getDoc(interval, ticker) {
+  const k = interval + "|" + ticker;
+  if (!cache.has(k)) cache.set(k, await api(`/api/data?ticker=${encodeURIComponent(ticker)}&interval=${interval}`));
+  return cache.get(k);
+}
+
+async function loadSummary() {
+  $("summary").innerHTML = '<p class="hint">Chargement…</p>';
+  try { SUMMARY = (await api("/api/data")).summary; }
+  catch (e) { $("summary").innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`; return; }
+  if (!SUMMARY.length) {
+    $("summary").innerHTML = '<p class="hint">La base est vide. Va dans l\'onglet « Télécharger » pour commencer.</p>';
+    $("viewCard").hidden = true; return;
+  }
+  $("summary").innerHTML = table(SUMMARY.map((s) => ({
+    ticker: s.ticker, intervalle: s.interval, nom: s.name, devise: s.currency, lignes: s.count, début: s.start, fin: s.end,
+    "": "",
+  })));
+  // le lien "supprimer" est échappé par table() : on le réinjecte
+  $("summary").querySelectorAll("td:last-child").forEach((td, i) => {
+    const s = SUMMARY[i];
+    td.innerHTML = `<a href="#" class="err">supprimer</a>`;
+    td.firstChild.onclick = async (ev) => {
+      ev.preventDefault();
+      if (!confirm(`Supprimer ${s.ticker} (${s.interval}) de la base ?`)) return;
+      await api(`/api/data?ticker=${encodeURIComponent(s.ticker)}&interval=${s.interval}`, { method: "DELETE" });
+      cache.delete(s.interval + "|" + s.ticker); selected.delete(s.ticker); loadSummary();
+    };
+  });
+  const intervals = [...new Set(SUMMARY.map((s) => s.interval))];
+  const prev = $("dbInterval").value;
+  $("dbInterval").innerHTML = intervals.map((i) => `<option>${esc(i)}</option>`).join("");
+  if (intervals.includes(prev)) $("dbInterval").value = prev;
+  $("viewCard").hidden = false;
+  renderChips();
+}
+
+function renderChips() {
+  const interval = $("dbInterval").value;
+  const avail = SUMMARY.filter((s) => s.interval === interval).map((s) => s.ticker);
+  [...selected].forEach((t) => { if (!avail.includes(t)) selected.delete(t); });
+  if (!selected.size) avail.slice(0, 3).forEach((t) => selected.add(t));
+  $("chips").innerHTML = avail.map((t) => `<span class="chip ${selected.has(t) ? "on" : ""}" data-t="${esc(t)}">${esc(t)}</span>`).join("");
+  $("chips").querySelectorAll(".chip").forEach((c) => c.onclick = () => {
+    selected.has(c.dataset.t) ? selected.delete(c.dataset.t) : selected.add(c.dataset.t);
+    renderChips();
+  });
+  $("base100").checked = selected.size > 1;
+  renderView();
+}
+
+async function renderView() {
+  const interval = $("dbInterval").value, start = $("dbStart").value, end = $("dbEnd").value;
+  const docs = await Promise.all([...selected].map((t) => getDoc(interval, t)));
+  const series = docs.map((d) => ({
+    ticker: d.ticker,
+    rows: d.rows.map((r) => Object.fromEntries(COLS.map((c, i) => [c, r[i]])))
+                .filter((r) => (!start || r.date >= start) && (!end || r.date.slice(0, 10) <= end)),
+  })).filter((s) => s.rows.length);
+  current = series.flatMap((s) => s.rows.map((r) => ({ ticker: s.ticker, interval, ...r })));
+  $("raw").innerHTML = "";
+
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const layout = {
+    margin: { l: 50, r: 10, t: 10, b: 40 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { color: dark ? "#e6e8ec" : "#1a1d23" }, xaxis: { rangeslider: { visible: false }, gridcolor: dark ? "#2a2f39" : "#e3e6eb" },
+    yaxis: { gridcolor: dark ? "#2a2f39" : "#e3e6eb" }, legend: { orientation: "h" },
+  };
+  const base100 = $("base100").checked;
+  let traces;
+  if (series.length === 1 && !base100) {
+    const r = series[0].rows;
+    traces = [{ type: "candlestick", name: series[0].ticker, x: r.map((d) => d.date), open: r.map((d) => d.open),
+                high: r.map((d) => d.high), low: r.map((d) => d.low), close: r.map((d) => d.close) }];
+  } else {
+    traces = series.map((s) => {
+      const first = s.rows[0].adj_close ?? s.rows[0].close;
+      return { type: "scatter", mode: "lines", name: s.ticker, x: s.rows.map((d) => d.date),
+               y: s.rows.map((d) => { const v = d.adj_close ?? d.close; return base100 ? (v / first) * 100 : v; }) };
+    });
+  }
+  Plotly.react("chart", traces, layout, { responsive: true, displaylogo: false });
+
+  $("stats").innerHTML = table(series.map((s) => {
+    const r = s.rows, adj = r.map((d) => d.adj_close ?? d.close);
+    const rets = adj.slice(1).map((v, i) => v / adj[i] - 1);
+    const mean = rets.reduce((a, b) => a + b, 0) / (rets.length || 1);
+    const sd = Math.sqrt(rets.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(rets.length - 1, 1));
+    const r2 = (v) => Math.round(v * 100) / 100;
+    return {
+      ticker: s.ticker, "dernier cours": r2(r.at(-1).close), "performance %": r2((adj.at(-1) / adj[0] - 1) * 100),
+      "plus haut": r2(Math.max(...r.map((d) => d.high ?? d.close))), "plus bas": r2(Math.min(...r.map((d) => d.low ?? d.close))),
+      "volatilité %/période": rets.length > 1 ? r2(sd * 100) : "", lignes: r.length,
+    };
+  }));
+}
+
+$("dbInterval").onchange = () => { selected.clear(); renderChips(); };
+["dbStart", "dbEnd", "base100"].forEach((id) => $(id).onchange = renderView);
+$("refreshBtn").onclick = () => { cache.clear(); loadSummary(); };
+$("csvBtn").onclick = () => exportCsv(current, "donnees_boursieres");
+$("xlsxBtn").onclick = () => exportXlsx(current, "donnees_boursieres");
+$("rawBtn").onclick = () => {
+  $("raw").innerHTML = `<p class="hint">${current.length} lignes${current.length > 2000 ? " (2000 premières affichées, l'export contient tout)" : ""}</p>` + table(current.slice(0, 2000));
+};
+
+// ---------- SQL (sql.js dans le navigateur) ----------
+let SQL, sqlRows = [];
+$("sqlBtn").onclick = async () => {
+  const btn = $("sqlBtn"); btn.disabled = true;
+  $("sqlResult").innerHTML = '<p class="hint">Chargement de la base…</p>';
+  try {
+    SQL ||= await initSqlJs({ locateFile: (f) => "vendor/" + f });
+    if (!SUMMARY.length) SUMMARY = (await api("/api/data")).summary;
+    const docs = await Promise.all(SUMMARY.map((s) => getDoc(s.interval, s.ticker)));
+    const db = new SQL.Database();
+    db.run(`CREATE TABLE prices (ticker TEXT, interval TEXT, date TEXT, open REAL, high REAL, low REAL, close REAL, adj_close REAL, volume INTEGER);
+            CREATE TABLE tickers (ticker TEXT PRIMARY KEY, name TEXT, exchange TEXT, currency TEXT, type TEXT);`);
+    const ins = db.prepare("INSERT INTO prices VALUES (?,?,?,?,?,?,?,?,?)");
+    const insT = db.prepare("INSERT OR REPLACE INTO tickers VALUES (?,?,?,?,?)");
+    db.run("BEGIN");
+    for (const d of docs) {
+      for (const r of d.rows) ins.run([d.ticker, d.interval, ...r]);
+      insT.run([d.ticker, d.info.name, d.info.exchange, d.info.currency, d.info.type]);
+    }
+    db.run("COMMIT"); ins.free(); insT.free();
+    const res = db.exec($("sqlText").value);
+    db.close();
+    const last = res.at(-1);
+    sqlRows = last ? last.values.map((v) => Object.fromEntries(last.columns.map((c, i) => [c, v[i]]))) : [];
+    $("sqlResult").innerHTML = `<p class="hint">${sqlRows.length} lignes</p>` + table(sqlRows.slice(0, 2000));
+    $("sqlCsv").hidden = $("sqlXlsx").hidden = !sqlRows.length;
+  } catch (e) {
+    $("sqlResult").innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`;
+  } finally { btn.disabled = false; }
+};
+$("sqlCsv").onclick = () => exportCsv(sqlRows, "resultat_requete");
+$("sqlXlsx").onclick = () => exportXlsx(sqlRows, "resultat_requete");
+</script>
+</body>
+</html>

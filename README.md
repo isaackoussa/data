@@ -3,7 +3,31 @@
 Application pour **télécharger des données boursières** (actions, indices, ETF, cryptos, devises)
 depuis Yahoo Finance et les **stocker dans ta propre base de données** (fichier SQLite `bourse.db`).
 
-## Installation
+## 🌐 Version web hébergée sur Netlify
+
+Le dossier contient une version web prête pour Netlify :
+
+| Élément | Rôle |
+|---------|------|
+| `public/index.html` | l'interface (téléchargement, graphiques, export CSV/Excel, SQL dans le navigateur) |
+| `netlify/functions/download.mts` | `POST /api/download` : récupère les cours sur Yahoo Finance et les enregistre |
+| `netlify/functions/data.mts` | `GET/DELETE /api/data` : lit ou supprime les données de la base |
+| Netlify Blobs (store `bourse`) | la base de données, permanente, gérée par Netlify (gratuit, rien à configurer) |
+
+**Déployer :**
+1. Sur [app.netlify.com](https://app.netlify.com) → *Add new project* → *Import an existing project* → GitHub → ce dépôt.
+2. Branche : celle qui contient ce code. Netlify lit `netlify.toml`, il n'y a rien d'autre à remplir.
+3. **Recommandé :** dans *Project configuration → Environment variables*, ajoute `APP_PASSWORD`
+   (portée *Functions*) puis redéploie. Sans ça, n'importe qui ayant l'adresse peut utiliser et modifier ta base.
+   Le site demandera ce mot de passe une fois, puis le mémorise dans le navigateur.
+
+Ou en ligne de commande : `npm install && npx netlify deploy --prod`.
+
+Les données de la base sont visibles dans Netlify sous *Data & Storage → Blobs*.
+
+## 💻 Version locale (Python / Streamlit)
+
+### Installation
 
 ```bash
 python -m venv .venv
@@ -11,7 +35,7 @@ source .venv/bin/activate        # Windows : .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Lancer l'application (interface web)
+### Lancer l'application
 
 ```bash
 streamlit run app.py
@@ -26,7 +50,7 @@ L'application s'ouvre dans ton navigateur (http://localhost:8501) avec 3 onglets
    statistiques (performance, plus haut, plus bas, volatilité), export **CSV / Excel**.
 3. **🔎 Requête SQL** : interroge ta base librement, puis exporte le résultat.
 
-## Ligne de commande (pour automatiser)
+### Ligne de commande (pour automatiser)
 
 ```bash
 python cli.py download AAPL MSFT MC.PA --period 5y
@@ -43,7 +67,7 @@ Cherche le nom sur [finance.yahoo.com](https://finance.yahoo.com). Quelques suff
 `.PA` Paris, `.DE` Francfort, `.L` Londres, `.MI` Milan, `.AS` Amsterdam, `.TO` Toronto.
 Indices : `^FCHI` (CAC 40), `^GSPC` (S&P 500), `^IXIC` (Nasdaq). Devises : `EURUSD=X`.
 
-## Structure de la base
+## Structure de la base (version locale SQLite, et tables de l'onglet SQL en ligne)
 
 | Table     | Colonnes |
 |-----------|----------|
