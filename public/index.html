@@ -203,18 +203,42 @@ function saveFile(blob, name) {
   a.href = URL.createObjectURL(blob); a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+// Nom de fichier sûr : sans accents ni caractères interdits (sinon certains navigateurs le remplacent par "download")
+const safeName = (n) => n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E]/g, "")
+                         .replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim().slice(0, 150) || "donnees";
 function exportCsv(rows, name) {
+  name = safeName(name);
   const ws = XLSX.utils.json_to_sheet(rows);
   saveFile(new Blob(["﻿" + XLSX.utils.sheet_to_csv(ws)], { type: "text/csv" }), name + ".csv");
 }
 function exportXlsx(rows, name) {
+  name = safeName(name);
   const wb = XLSX.utils.book_new();
   const groups = {};
-  rows.forEach((r) => (groups[r.ticker || "donnees"] ||= []).push(r));
-  const keys = Object.keys(groups);
-  if (keys.length > 1) keys.forEach((k) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(groups[k]), k.replace(/[\\/?*\[\]:]/g, "_").slice(0, 31)));
-  else XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "donnees");
+  rows.forEach((r) => (groups[r.ticker || ""] ||= []).push(r));
+  const used = new Set();
+  for (const [ticker, part] of Object.entries(groups)) {
+    // un onglet par action, nommé d'après la donnée (31 caractères max, sans \ / ? * [ ] :)
+    let sheet = (part[0].nom || ticker || "donnees").replace(/[\\/?*\[\]:]/g, "_").slice(0, 31);
+    for (let i = 2; used.has(sheet.toLowerCase()); i++) sheet = sheet.slice(0, 28) + " " + i;
+    used.add(sheet.toLowerCase());
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(part), sheet);
+  }
   XLSX.writeFile(wb, name + ".xlsx");
+}
+
+const INTERVAL_LABELS = { "1d": "journalier", "1wk": "hebdomadaire", "1mo": "mensuel", "1h": "1 heure",
+                          "30m": "30 min", "15m": "15 min", "5m": "5 min", "1m": "1 min" };
+/** Nom de fichier lisible : "S&P 500 (^GSPC) - journalier - 2021-10-18 au 2026-10-15" */
+function fileName(series, interval) {
+  if (!series.length) return "donnees_boursieres";
+  const label = (s) => (s.name ? `${s.name} (${s.ticker})` : s.ticker);
+  const short = (s) => s.name || s.ticker;
+  let who = series.length === 1 ? label(series[0])
+          : series.length <= 3 ? series.map(short).join(", ")
+          : `${series.slice(0, 2).map(short).join(", ")} et ${series.length - 2} autres`;
+  const dates = series.flatMap((s) => [s.rows[0].date, s.rows.at(-1).date]).map((d) => d.slice(0, 10)).sort();
+  return `${who} - ${INTERVAL_LABELS[interval] || interval} - ${dates[0]} au ${dates.at(-1)}`;
 }
 
 // ---------- onglets ----------
@@ -346,6 +370,7 @@ let SUMMARY = [];
 const selected = new Set();
 const cache = new Map(); // "interval|ticker" -> doc
 let current = []; // lignes affichées (pour export)
+let currentName = "donnees_boursieres"; // nom des fichiers exportés
 
 async function getDoc(interval, ticker) {
   const k = interval + "|" + ticker;
@@ -403,10 +428,12 @@ async function renderView() {
   const docs = await Promise.all([...selected].map((t) => getDoc(interval, t)));
   const series = docs.map((d) => ({
     ticker: d.ticker,
+    name: d.info?.name || null,
     rows: d.rows.map((r) => Object.fromEntries(COLS.map((c, i) => [c, r[i]])))
                 .filter((r) => (!start || r.date >= start) && (!end || r.date.slice(0, 10) <= end)),
   })).filter((s) => s.rows.length);
-  current = series.flatMap((s) => s.rows.map((r) => ({ ticker: s.ticker, interval, ...r })));
+  current = series.flatMap((s) => s.rows.map((r) => ({ ticker: s.ticker, nom: s.name || "", interval, ...r })));
+  currentName = fileName(series, interval);
   $("raw").innerHTML = "";
 
   const dark = matchMedia("(prefers-color-scheme: dark)").matches;
@@ -447,8 +474,8 @@ async function renderView() {
 $("dbInterval").onchange = () => { selected.clear(); renderChips(); };
 ["dbStart", "dbEnd", "base100"].forEach((id) => $(id).onchange = renderView);
 $("refreshBtn").onclick = () => { cache.clear(); loadSummary(); };
-$("csvBtn").onclick = () => exportCsv(current, "donnees_boursieres");
-$("xlsxBtn").onclick = () => exportXlsx(current, "donnees_boursieres");
+$("csvBtn").onclick = () => exportCsv(current, currentName);
+$("xlsxBtn").onclick = () => exportXlsx(current, currentName);
 $("rawBtn").onclick = () => {
   $("raw").innerHTML = `<p class="hint">${current.length} lignes${current.length > 2000 ? " (2000 premières affichées, l'export contient tout)" : ""}</p>` + table(current.slice(0, 2000));
 };
@@ -483,8 +510,12 @@ $("sqlBtn").onclick = async () => {
     $("sqlResult").innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`;
   } finally { btn.disabled = false; }
 };
-$("sqlCsv").onclick = () => exportCsv(sqlRows, "resultat_requete");
-$("sqlXlsx").onclick = () => exportXlsx(sqlRows, "resultat_requete");
+const sqlName = () => {
+  const d = new Date(), z = (n) => String(n).padStart(2, "0");
+  return `Requete SQL - ${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}h${z(d.getMinutes())}`;
+};
+$("sqlCsv").onclick = () => exportCsv(sqlRows, sqlName());
+$("sqlXlsx").onclick = () => exportXlsx(sqlRows, sqlName());
 </script>
 </body>
 </html>
