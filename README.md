@@ -12,7 +12,8 @@ Le dossier contient une version web prête pour Netlify :
 | `public/index.html` | l'interface (téléchargement, graphiques, export CSV/Excel, SQL dans le navigateur) |
 | `netlify/functions/download.mts` | `POST /api/download` : récupère les cours sur Yahoo Finance et les enregistre |
 | `netlify/functions/data.mts` | `GET/DELETE /api/data` : lit ou supprime les données de la base |
-| Netlify Blobs (store `bourse`) | la base de données, permanente, gérée par Netlify (gratuit, rien à configurer) |
+| `netlify/functions/worldbank.mts` | `/api/wb/*` : recherche d'indicateurs, pays, téléchargement et lecture des données de la Banque mondiale |
+| Netlify Blobs (stores `bourse` et `worldbank`) | la base de données, permanente, gérée par Netlify (gratuit, rien à configurer) |
 
 **Déployer :**
 1. Sur [app.netlify.com](https://app.netlify.com) → *Add new project* → *Import an existing project* → GitHub → ce dépôt.

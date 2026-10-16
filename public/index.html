@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ma base boursière</title>
+<title>Ma base de données</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
 <style>
   :root {
@@ -59,6 +59,8 @@
   .search-results b { white-space: nowrap; }
   .search-results span { color: var(--muted); font-size: .85rem; text-align: right; }
   .catalog { margin: 4px 0 8px; }
+  .wb-selected { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 8px; }
+  .wb-selected b { display: block; }
   .catalog summary { cursor: pointer; color: var(--accent); font-size: .92rem; }
   .catalog h3 { font-size: .85rem; color: var(--muted); font-weight: 600; margin: 12px 0 6px; }
   #chart { width: 100%; height: 440px; overflow: hidden; }
@@ -68,10 +70,11 @@
 </head>
 <body>
 <main>
-  <h1>📈 Ma base de données boursières</h1>
+  <h1>📈 Ma base de données économiques et boursières</h1>
   <nav class="tabs">
     <button data-tab="dl" class="active">⬇️ Télécharger</button>
     <button data-tab="db">🗄️ Ma base</button>
+    <button data-tab="wb">🌍 Banque mondiale</button>
     <button data-tab="sql">🔎 Requête SQL</button>
   </nav>
 
@@ -147,12 +150,71 @@
     </div>
   </section>
 
+  <!-- ============ Banque mondiale ============ -->
+  <section id="wb" class="panel">
+    <div class="card">
+      <h2 style="margin-top:0">Télécharger un indicateur de la Banque mondiale</h2>
+      <p class="hint">Environ 1 500 indicateurs (économie, population, santé, éducation, énergie, environnement…) pour
+        tous les pays depuis 1960. Source : <a href="https://data.worldbank.org/" target="_blank" rel="noopener">World Development Indicators</a>.</p>
+
+      <label for="wbSearch">1. Indicateur (cherche en français : « PIB », « inflation », « chômage », « électricité »…)</label>
+      <div class="search-box">
+        <input id="wbSearch" placeholder="ex. PIB par habitant, espérance de vie, dette…" autocomplete="off">
+        <div id="wbSearchResults" class="search-results" hidden></div>
+      </div>
+      <div class="chips" id="wbPopular"></div>
+      <div id="wbSelected" class="wb-selected" hidden></div>
+
+      <label for="wbCountrySearch" style="margin-top:16px">2. Pays</label>
+      <div class="search-box">
+        <input id="wbCountrySearch" placeholder="ex. Côte d'Ivoire, Sénégal, France…" autocomplete="off">
+        <div id="wbCountryResults" class="search-results" hidden></div>
+      </div>
+      <div class="row" style="margin-bottom:8px"><span class="hint">Groupes :</span><span class="chips" id="wbGroups"></span></div>
+      <div class="chips" id="wbCountries"></div>
+      <label class="inline" style="margin-top:8px"><input type="checkbox" id="wbAll"> Tous les pays et régions du monde</label>
+
+      <div class="grid" style="max-width:420px">
+        <div><label for="wbStart">3. De l'année</label><input id="wbStart" type="number" min="1960" value="2000"></div>
+        <div><label for="wbEnd">à l'année</label><input id="wbEnd" type="number" min="1960"></div>
+      </div>
+      <button class="btn" id="wbDlBtn">🚀 Télécharger et enregistrer dans la base</button>
+      <div id="wbDlResult" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h2 style="margin:0">Mes indicateurs</h2>
+        <button class="btn secondary" id="wbRefresh">↻ Actualiser</button></div>
+      <div id="wbSummary" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card" id="wbView" hidden>
+      <h2 style="margin-top:0">Consulter / exporter</h2>
+      <div class="grid">
+        <div style="grid-column: span 2"><label for="wbViewInd">Indicateur</label><select id="wbViewInd"></select></div>
+        <div><label for="wbViewStart">De</label><input id="wbViewStart" type="number"></div>
+        <div><label for="wbViewEnd">À</label><input id="wbViewEnd" type="number"></div>
+      </div>
+      <p class="hint" id="wbNote"></p>
+      <label>Pays affichés (clique pour sélectionner)</label>
+      <div class="chips" id="wbViewCountries"></div>
+      <div id="wbChart" style="width:100%;height:440px;overflow:hidden;margin-top:12px"></div>
+      <h2>Tableau (années × pays)</h2>
+      <div id="wbTable"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="wbCsv">⬇️ CSV</button>
+        <button class="btn" id="wbXlsx">⬇️ Excel</button>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ SQL ============ -->
   <section id="sql" class="panel">
     <div class="card">
       <p class="hint">Interroge toute ta base en SQL (SQLite, exécuté dans ton navigateur : tes données stockées ne sont jamais modifiées).<br>
         Tables : <code>prices(ticker, interval, date, open, high, low, close, adj_close, volume)</code> et
-        <code>tickers(ticker, name, exchange, currency, type)</code>.</p>
+        <code>tickers(ticker, name, exchange, currency, type)</code> et
+        <code>worldbank(indicator, indicator_name, country, country_name, year, value)</code>.</p>
       <textarea id="sqlText">SELECT ticker, substr(date, 1, 7) AS mois, ROUND(AVG(close), 2) AS cours_moyen, SUM(volume) AS volume
 FROM prices WHERE interval = '1d'
 GROUP BY ticker, mois ORDER BY ticker, mois</textarea>
@@ -192,11 +254,13 @@ async function api(path, opts = {}, retry = true) {
 }
 
 // ---------- tableaux / exports ----------
+// colonnes d'années : pas de séparateur de milliers (2024, pas « 2 024 »)
+const YEAR_COLS = new Set(["année", "annee", "year", "de", "à"]);
 function table(rows, cols) {
   if (!rows.length) return '<p class="hint">Aucune ligne.</p>';
   cols = cols || Object.keys(rows[0]);
   return `<div class="table-wrap"><table><thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${
-    rows.map((r) => `<tr>${cols.map((c) => `<td>${esc(fmt(r[c]))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+    rows.map((r) => `<tr>${cols.map((c) => `<td>${esc(YEAR_COLS.has(c) ? r[c] : fmt(r[c]))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 function saveFile(blob, name) {
   const a = document.createElement("a");
@@ -246,6 +310,7 @@ document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
   document.querySelectorAll(".tabs button, .panel").forEach((e) => e.classList.remove("active"));
   b.classList.add("active"); $(b.dataset.tab).classList.add("active");
   if (b.dataset.tab === "db") loadSummary();
+  if (b.dataset.tab === "wb") wbInit();
 });
 
 // ---------- Recherche par nom + catalogue ----------
@@ -527,6 +592,211 @@ $("rawBtn").onclick = () => {
   $("raw").innerHTML = `<p class="hint">${current.length} lignes${current.length > 2000 ? " (2000 premières affichées, l'export contient tout)" : ""}</p>` + table(current.slice(0, 2000));
 };
 
+// ---------- Banque mondiale ----------
+const WB_POPULAR = [
+  ["NY.GDP.MKTP.CD", "PIB ($ US courants)"], ["NY.GDP.PCAP.CD", "PIB par habitant ($ US)"],
+  ["NY.GDP.MKTP.KD.ZG", "Croissance du PIB (%)"], ["FP.CPI.TOTL.ZG", "Inflation (%)"],
+  ["SL.UEM.TOTL.ZS", "Chômage (%)"], ["SP.POP.TOTL", "Population"], ["SP.DYN.LE00.IN", "Espérance de vie"],
+  ["GC.DOD.TOTL.GD.ZS", "Dette publique (% PIB)"], ["DT.DOD.DECT.CD", "Dette extérieure ($ US)"],
+  ["NE.EXP.GNFS.ZS", "Exportations (% PIB)"], ["NE.IMP.GNFS.ZS", "Importations (% PIB)"],
+  ["BN.CAB.XOKA.GD.ZS", "Balance courante (% PIB)"], ["BX.KLT.DINV.WD.GD.ZS", "IDE entrants (% PIB)"],
+  ["PA.NUS.FCRF", "Taux de change officiel (/$)"], ["NV.AGR.TOTL.ZS", "Agriculture (% PIB)"],
+  ["SI.POV.DDAY", "Pauvreté extrême (%)"], ["EG.ELC.ACCS.ZS", "Accès à l'électricité (%)"],
+  ["SP.URB.TOTL.IN.ZS", "Population urbaine (%)"], ["IT.NET.USER.ZS", "Utilisateurs d'Internet (%)"],
+  ["SE.ADT.LITR.ZS", "Alphabétisation adultes (%)"], ["SH.DYN.MORT", "Mortalité des moins de 5 ans (‰)"],
+];
+const WB_GROUPS = {
+  "G7": ["USA", "JPN", "DEU", "GBR", "FRA", "ITA", "CAN"],
+  "BRICS": ["BRA", "RUS", "IND", "CHN", "ZAF"],
+  "UEMOA": ["BEN", "BFA", "CIV", "GNB", "MLI", "NER", "SEN", "TGO"],
+  "CEMAC": ["CMR", "CAF", "TCD", "COG", "GNQ", "GAB"],
+  "Maghreb": ["DZA", "MAR", "TUN", "LBY", "MRT"],
+  "Zone euro": ["DEU", "FRA", "ITA", "ESP", "NLD", "BEL", "AUT", "PRT", "IRL", "FIN", "GRC"],
+  "Régions du monde": ["WLD", "EUU", "SSF", "EAS", "LCN", "MEA", "NAC", "SAS", "ECS"],
+};
+let wbCountries = [], wbSelInd = null, wbSel = new Set(["CIV", "SEN", "FRA"]), wbReady = false;
+const wbDocs = new Map(); let wbCur = null, wbViewSel = new Set(), wbCurRows = [], wbCurName = "banque_mondiale";
+const wbName = (id) => wbCountries.find((c) => c.id === id)?.name || id;
+async function wbGetDoc(id) {
+  if (!wbDocs.has(id)) wbDocs.set(id, await api("/api/wb/data?indicator=" + encodeURIComponent(id)));
+  return wbDocs.get(id);
+}
+
+async function wbInit() {
+  if (!wbReady) {
+    wbReady = true;
+    $("wbEnd").value = new Date().getFullYear();
+    $("wbPopular").innerHTML = '<span class="hint">Favoris :</span>' + WB_POPULAR.map(([id, n]) => `<span class="chip" data-id="${esc(id)}">${esc(n)}</span>`).join("");
+    $("wbPopular").querySelectorAll(".chip").forEach((c) => c.onclick = () => wbPickInd({ id: c.dataset.id, name: c.textContent }));
+    $("wbGroups").innerHTML = Object.keys(WB_GROUPS).map((g) => `<span class="chip" data-g="${esc(g)}">+ ${esc(g)}</span>`).join("");
+    $("wbGroups").querySelectorAll(".chip").forEach((c) => c.onclick = () => { WB_GROUPS[c.dataset.g].forEach((x) => wbSel.add(x)); wbRenderCountries(); });
+    try { wbCountries = (await api("/api/wb/countries")).countries; }
+    catch (e) { $("wbDlResult").innerHTML = `<p class="err">❌ Liste des pays : ${esc(e.message)}</p>`; }
+    wbRenderCountries();
+  }
+  wbLoadSummary();
+}
+
+function wbPickInd(ind) {
+  wbSelInd = ind;
+  $("wbSelected").hidden = false;
+  $("wbSelected").innerHTML = `<b>✅ ${esc(ind.name)}</b><span class="hint">${esc(ind.id)}${ind.source ? " · " + esc(ind.source) : ""}</span>` +
+    (ind.note ? `<p class="hint" style="margin:6px 0 0">${esc(ind.note)}</p>` : "");
+  $("wbPopular").querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c.dataset.id === ind.id));
+}
+
+function wbRenderCountries() {
+  $("wbCountries").innerHTML = [...wbSel].map((id) => `<span class="chip on" data-id="${esc(id)}" title="retirer">${esc(wbName(id))} ✕</span>`).join("")
+    + (wbSel.size ? ' <span class="chip" id="wbClear">tout retirer</span>' : '<span class="hint">Aucun pays choisi.</span>');
+  $("wbCountries").querySelectorAll("[data-id]").forEach((c) => c.onclick = () => { wbSel.delete(c.dataset.id); wbRenderCountries(); });
+  if ($("wbClear")) $("wbClear").onclick = () => { wbSel.clear(); wbRenderCountries(); };
+}
+
+// petite liste déroulante réutilisable (recherche + clavier)
+function dropdown(input, box, search, render, onPick, delay = 0) {
+  let items = [], sel = -1, timer, seq = 0;
+  const show = (html) => { box.innerHTML = html; box.hidden = !html; };
+  const draw = (list, empty) => {
+    items = list; sel = -1;
+    show(list.length ? list.map((r, i) => `<div data-i="${i}">${render(r)}</div>`).join("") : empty ? `<div><span>${empty}</span></div>` : "");
+    box.querySelectorAll("[data-i]").forEach((d) => d.onmousedown = (e) => { e.preventDefault(); choose(+d.dataset.i); });
+  };
+  const choose = (i) => { if (items[i]) { onPick(items[i]); input.value = ""; show(""); } };
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    const q = input.value.trim(); if (q.length < 2) return show("");
+    const n = ++seq;
+    if (delay) show('<div><span>Recherche…</span></div>');
+    timer = setTimeout(async () => {
+      try { const list = await search(q); if (n === seq) draw(list, "Aucun résultat."); }
+      catch (e) { if (n === seq) show(`<div><span class="err">❌ ${esc(e.message)}</span></div>`); }
+    }, delay);
+  });
+  input.addEventListener("keydown", (e) => {
+    const rows = box.querySelectorAll("[data-i]"); if (!rows.length) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault(); sel = (sel + (e.key === "ArrowDown" ? 1 : -1) + rows.length) % rows.length;
+      rows.forEach((r, i) => r.classList.toggle("sel", i === sel));
+    } else if (e.key === "Enter") { e.preventDefault(); choose(Math.max(sel, 0)); }
+    else if (e.key === "Escape") show("");
+  });
+  input.addEventListener("blur", () => setTimeout(() => show(""), 150));
+}
+
+dropdown($("wbSearch"), $("wbSearchResults"),
+  async (q) => {
+    const local = WB_POPULAR.filter(([id, n]) => norm(q).split(" ").every((w) => norm(n + " " + id).includes(w)))
+      .map(([id, name]) => ({ id, name, star: true }));
+    const { results } = await api("/api/wb/search?q=" + encodeURIComponent(q));
+    const seen = new Set(local.map((r) => r.id));
+    return [...local, ...results.filter((r) => !seen.has(r.id))];
+  },
+  (r) => `<b style="white-space:normal">${r.star ? "⭐ " : ""}${esc(r.name)}</b><span>${esc(r.id)}</span>`,
+  wbPickInd, 300);
+
+dropdown($("wbCountrySearch"), $("wbCountryResults"),
+  async (q) => { const w = norm(q).split(" "); return wbCountries.filter((c) => w.every((x) => norm(c.name + " " + c.id).includes(x))).slice(0, 15); },
+  (c) => `<b style="white-space:normal">${esc(c.name)}</b><span>${esc(c.id)}${c.aggregate ? " · groupe/région" : c.region ? " · " + esc(c.region) : ""}</span>`,
+  (c) => { wbSel.add(c.id); wbRenderCountries(); });
+
+$("wbAll").onchange = () => { $("wbCountries").style.opacity = $("wbAll").checked ? .4 : 1; };
+
+$("wbDlBtn").onclick = async () => {
+  if (!wbSelInd) return ($("wbDlResult").innerHTML = '<p class="warn">⚠️ Choisis d\'abord un indicateur (étape 1).</p>');
+  if (!$("wbAll").checked && !wbSel.size) return ($("wbDlResult").innerHTML = '<p class="warn">⚠️ Choisis au moins un pays (étape 2).</p>');
+  const btn = $("wbDlBtn"); btn.disabled = true; btn.textContent = "⏳ Téléchargement…";
+  try {
+    const r = await api("/api/wb/download", { method: "POST", body: JSON.stringify({
+      indicator: wbSelInd.id, countries: $("wbAll").checked ? [] : [...wbSel], start: $("wbStart").value, end: $("wbEnd").value }) });
+    wbDocs.delete(wbSelInd.id);
+    $("wbDlResult").innerHTML = r.received
+      ? `<p class="ok">✅ ${esc(r.indicator.name)} : ${r.received} valeurs reçues, ${r.total} au total dans la base.</p>`
+      : '<p class="warn">⚠️ Aucune valeur pour ces pays et ces années (la Banque mondiale n\'a pas toujours de données pour tous les pays).</p>';
+    if (r.received) { wbViewSel = $("wbAll").checked ? new Set() : new Set(wbSel); await wbLoadSummary(wbSelInd.id); }
+  } catch (e) {
+    $("wbDlResult").innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`;
+  } finally { btn.disabled = false; btn.textContent = "🚀 Télécharger et enregistrer dans la base"; }
+};
+
+let WB_SUMMARY = [];
+async function wbLoadSummary(focus) {
+  $("wbSummary").innerHTML = '<p class="hint">Chargement…</p>';
+  try { WB_SUMMARY = (await api("/api/wb/data")).summary; }
+  catch (e) { return ($("wbSummary").innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`); }
+  if (!WB_SUMMARY.length) { $("wbSummary").innerHTML = '<p class="hint">Aucun indicateur enregistré pour l\'instant.</p>'; $("wbView").hidden = true; return; }
+  $("wbSummary").innerHTML = table(WB_SUMMARY.map((m) => ({ indicateur: m.name, code: m.id, pays: m.countries, valeurs: m.count, de: m.start, "à": m.end, "": "" })));
+  $("wbSummary").querySelectorAll("td:last-child").forEach((td, i) => {
+    const m = WB_SUMMARY[i];
+    td.innerHTML = '<a href="#" class="err">supprimer</a>';
+    td.firstChild.onclick = async (ev) => {
+      ev.preventDefault();
+      if (!confirm(`Supprimer « ${m.name} » de la base ?`)) return;
+      await api("/api/wb/data?indicator=" + encodeURIComponent(m.id), { method: "DELETE" });
+      wbDocs.delete(m.id); wbLoadSummary();
+    };
+  });
+  const prev = focus || $("wbViewInd").value;
+  $("wbViewInd").innerHTML = WB_SUMMARY.map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("");
+  if (WB_SUMMARY.some((m) => m.id === prev)) $("wbViewInd").value = prev;
+  $("wbView").hidden = false;
+  wbOpen();
+}
+
+async function wbOpen() {
+  const doc = await wbGetDoc($("wbViewInd").value);
+  if (wbCur !== doc.indicator.id) {
+    const years = doc.rows.map((r) => r[2]);
+    $("wbViewStart").value = Math.min(...years); $("wbViewEnd").value = Math.max(...years);
+    const present = new Set(doc.rows.map((r) => r[0]));
+    wbViewSel = new Set([...wbViewSel].filter((c) => present.has(c)));
+    if (!wbViewSel.size) [...present].slice(0, 5).forEach((c) => wbViewSel.add(c));
+    wbCur = doc.indicator.id;
+  }
+  $("wbNote").textContent = doc.indicator.note || "";
+  const countries = [...new Map(doc.rows.map((r) => [r[0], r[1]])).entries()].sort((a, b) => a[1].localeCompare(b[1], "fr"));
+  $("wbViewCountries").innerHTML = countries.map(([id, n]) => `<span class="chip ${wbViewSel.has(id) ? "on" : ""}" data-id="${esc(id)}">${esc(n)}</span>`).join("");
+  $("wbViewCountries").querySelectorAll(".chip").forEach((c) => c.onclick = () => {
+    wbViewSel.has(c.dataset.id) ? wbViewSel.delete(c.dataset.id) : wbViewSel.add(c.dataset.id); wbOpen();
+  });
+  wbRender(doc);
+}
+
+function wbRender(doc) {
+  const y0 = +$("wbViewStart").value || 1960, y1 = +$("wbViewEnd").value || 9999;
+  const rows = doc.rows.filter((r) => wbViewSel.has(r[0]) && r[2] >= y0 && r[2] <= y1);
+  const byCountry = new Map();
+  rows.forEach((r) => { if (!byCountry.has(r[0])) byCountry.set(r[0], { name: r[1], pts: [] }); byCountry.get(r[0]).pts.push(r); });
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches, grid = dark ? "#2a2f39" : "#e3e6eb";
+  Plotly.react("wbChart", [...byCountry.values()].map((c) => ({
+    type: "scatter", mode: "lines+markers", name: c.name, x: c.pts.map((p) => p[2]), y: c.pts.map((p) => p[3]), marker: { size: 4 } })), {
+    margin: { l: 60, r: 10, t: 10, b: 40 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { color: dark ? "#e6e8ec" : "#1a1d23" }, xaxis: { gridcolor: grid, dtick: rows.length && y1 - y0 < 15 ? 1 : undefined },
+    yaxis: { gridcolor: grid, title: { text: doc.indicator.name.length < 60 ? doc.indicator.name : "" } }, legend: { orientation: "h" },
+  }, { responsive: true, displaylogo: false });
+
+  // tableau croisé : une ligne par année, une colonne par pays
+  const names = [...byCountry.values()].map((c) => c.name);
+  const years = [...new Set(rows.map((r) => r[2]))].sort((a, b) => b - a);
+  const pivot = years.map((y) => Object.fromEntries([["année", y], ...[...byCountry.values()].map((c) => [c.name, c.pts.find((p) => p[2] === y)?.[3] ?? ""])]));
+  $("wbTable").innerHTML = table(pivot, ["année", ...names]);
+
+  wbCurRows = rows.map((r) => ({ indicateur: doc.indicator.name, code_indicateur: doc.indicator.id, pays: r[1], code_pays: r[0], annee: r[2], valeur: r[3] }));
+  wbCurRows.pivot = pivot;
+  const who = names.length <= 3 ? names.join(", ") : `${names.slice(0, 2).join(", ")} et ${names.length - 2} autres`;
+  wbCurName = `${doc.indicator.name} - ${who} - ${years.at(-1) ?? ""} a ${years[0] ?? ""}`;
+}
+
+$("wbViewInd").onchange = () => { wbOpen(); };
+["wbViewStart", "wbViewEnd"].forEach((id) => $(id).onchange = () => wbOpen());
+$("wbRefresh").onclick = () => { wbDocs.clear(); wbLoadSummary(); };
+$("wbCsv").onclick = () => exportCsv(wbCurRows, wbCurName);
+$("wbXlsx").onclick = () => {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(wbCurRows.pivot || []), "Tableau");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(wbCurRows), "Donnees (liste)");
+  XLSX.writeFile(wb, safeName(wbCurName) + ".xlsx");
+};
+
 // ---------- SQL (sql.js dans le navigateur) ----------
 let SQL, sqlRows = [];
 $("sqlBtn").onclick = async () => {
@@ -538,7 +808,8 @@ $("sqlBtn").onclick = async () => {
     const docs = await Promise.all(SUMMARY.map((s) => getDoc(s.interval, s.ticker)));
     const db = new SQL.Database();
     db.run(`CREATE TABLE prices (ticker TEXT, interval TEXT, date TEXT, open REAL, high REAL, low REAL, close REAL, adj_close REAL, volume INTEGER);
-            CREATE TABLE tickers (ticker TEXT PRIMARY KEY, name TEXT, exchange TEXT, currency TEXT, type TEXT);`);
+            CREATE TABLE tickers (ticker TEXT PRIMARY KEY, name TEXT, exchange TEXT, currency TEXT, type TEXT);
+            CREATE TABLE worldbank (indicator TEXT, indicator_name TEXT, country TEXT, country_name TEXT, year INTEGER, value REAL);`);
     const ins = db.prepare("INSERT INTO prices VALUES (?,?,?,?,?,?,?,?,?)");
     const insT = db.prepare("INSERT OR REPLACE INTO tickers VALUES (?,?,?,?,?)");
     db.run("BEGIN");
@@ -546,7 +817,11 @@ $("sqlBtn").onclick = async () => {
       for (const r of d.rows) ins.run([d.ticker, d.interval, ...r]);
       insT.run([d.ticker, d.info.name, d.info.exchange, d.info.currency, d.info.type]);
     }
-    db.run("COMMIT"); ins.free(); insT.free();
+    const wbSum = (await api("/api/wb/data")).summary;
+    const wbDocs = await Promise.all(wbSum.map((m) => wbGetDoc(m.id)));
+    const insW = db.prepare("INSERT INTO worldbank VALUES (?,?,?,?,?,?)");
+    for (const d of wbDocs) for (const r of d.rows) insW.run([d.indicator.id, d.indicator.name, ...r]);
+    db.run("COMMIT"); ins.free(); insT.free(); insW.free();
     const res = db.exec($("sqlText").value);
     db.close();
     const last = res.at(-1);
