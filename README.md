@@ -24,6 +24,10 @@ Le dossier contient une version web prête pour Netlify :
 
 Ou en ligne de commande : `npm install && npx netlify deploy --prod`.
 
+**Onglet « 📚 Classeur Excel »** : compose un fichier avec plusieurs panels (actions et/ou Banque mondiale),
+chacun avec ses dates, sa variable et son format (panel long, panel large, complet). Le fichier contient un onglet
+*Sommaire* (avec liens) puis un onglet par panel, coloré par indice / pays.
+
 Les données de la base sont visibles dans Netlify sous *Data & Storage → Blobs*.
 
 ## 💻 Version locale (Python / Streamlit)

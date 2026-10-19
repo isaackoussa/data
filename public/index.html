@@ -61,6 +61,11 @@
   .catalog { margin: 4px 0 8px; }
   .wb-selected { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 8px; }
   .wb-selected b { display: block; }
+  .book-panel { border-left: 5px solid var(--accent); }
+  .book-panel .head { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 8px; }
+  .book-panel .head h3 { margin: 0; font-size: 1rem; }
+  .linkbtn { background: none; border: none; color: var(--accent); cursor: pointer; font: inherit; padding: 2px 4px; }
+  .linkbtn.err { color: var(--err); }
   .catalog summary { cursor: pointer; color: var(--accent); font-size: .92rem; }
   .catalog h3 { font-size: .85rem; color: var(--muted); font-weight: 600; margin: 12px 0 6px; }
   #chart { width: 100%; height: 440px; overflow: hidden; }
@@ -75,6 +80,7 @@
     <button data-tab="dl" class="active">⬇️ Télécharger</button>
     <button data-tab="db">🗄️ Ma base</button>
     <button data-tab="wb">🌍 Banque mondiale</button>
+    <button data-tab="book">📚 Classeur Excel</button>
     <button data-tab="sql">🔎 Requête SQL</button>
   </nav>
 
@@ -219,6 +225,27 @@
         <button class="btn" id="wbCsv">⬇️ CSV</button>
         <button class="btn" id="wbXlsx">⬇️ Excel</button>
       </div>
+    </div>
+  </section>
+
+  <!-- ============ Classeur Excel multi-panels ============ -->
+  <section id="book" class="panel">
+    <div class="card">
+      <h2 style="margin-top:0">Classeur Excel : plusieurs panels dans un seul fichier</h2>
+      <p class="hint">Compose ton fichier : chaque panel a ses propres actions (ou pays), ses dates, sa variable et son format,
+        et devient un onglet du classeur. Un onglet <b>Sommaire</b> en tête liste tous les panels avec un lien vers chacun.
+        Les panels utilisent les données déjà enregistrées dans ta base : télécharge-les d'abord dans les onglets
+        « Télécharger » ou « Banque mondiale ». Ta composition est mémorisée dans ce navigateur.</p>
+      <div class="row" style="align-items:flex-end">
+        <div style="flex:1;min-width:220px"><label for="bookName">Nom du fichier</label><input id="bookName"></div>
+        <button class="btn secondary" id="bookAddStock">+ Panel boursier</button>
+        <button class="btn secondary" id="bookAddWb">+ Panel Banque mondiale</button>
+      </div>
+    </div>
+    <div id="bookPanels"></div>
+    <div class="card">
+      <button class="btn" id="bookGo">📥 Générer le classeur Excel</button>
+      <div id="bookResult" style="margin-top:12px"></div>
     </div>
   </section>
 
@@ -377,6 +404,7 @@ document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
   b.classList.add("active"); $(b.dataset.tab).classList.add("active");
   if (b.dataset.tab === "db") loadSummary();
   if (b.dataset.tab === "wb") wbInit();
+  if (b.dataset.tab === "book") bookInit();
 });
 
 // ---------- Recherche par nom + catalogue ----------
@@ -893,6 +921,191 @@ $("wbXlsx").onclick = () => {
   XLSX.utils.book_append_sheet(wb, styledSheet(wbCurRows, { rowKey: "code_pays" }), "Donnees (liste)");
   XLSX.writeFile(wb, safeName(wbCurName) + ".xlsx");
 };
+
+// ---------- Classeur Excel multi-panels ----------
+const FORMAT_LABELS = { long: "panel long", wide: "panel large", full: "complet" };
+const PANEL_BORDERS = ["#2563eb", "#16a34a", "#d97706", "#db2777", "#7c3aed", "#0891b2", "#ea580c", "#dc2626"];
+let BOOK = [], bookReady = false;
+const bookSave = () => { try { localStorage.setItem("book_panels", JSON.stringify({ name: $("bookName").value, panels: BOOK })); } catch {} };
+function bookLoad() {
+  try { const d = JSON.parse(localStorage.getItem("book_panels") || "null"); if (d) { BOOK = d.panels || []; return d.name; } } catch {}
+  return null;
+}
+const newStockPanel = () => ({ kind: "stock", title: "", interval: "1d", tickers: [], start: "", end: "", variable: "open", format: "long" });
+const newWbPanel = () => ({ kind: "wb", title: "", indicator: "", countries: [], start: "", end: "", format: "long" });
+
+async function bookInit() {
+  if (!bookReady) {
+    bookReady = true;
+    const d = new Date(), z = (n) => String(n).padStart(2, "0");
+    const saved = bookLoad();
+    $("bookName").value = saved || `Classeur panels - ${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
+    $("bookName").oninput = bookSave;
+    $("bookAddStock").onclick = () => { BOOK.push(newStockPanel()); bookSave(); bookRender(); };
+    $("bookAddWb").onclick = () => { BOOK.push(newWbPanel()); bookSave(); bookRender(); };
+    $("bookGo").onclick = bookGenerate;
+  }
+  $("bookPanels").innerHTML = '<div class="card"><p class="hint">Chargement de la base…</p></div>';
+  try {
+    [SUMMARY, WB_SUMMARY] = await Promise.all([api("/api/data").then((r) => r.summary), api("/api/wb/data").then((r) => r.summary)]);
+  } catch (e) { return ($("bookPanels").innerHTML = `<div class="card"><p class="err">❌ ${esc(e.message)}</p></div>`); }
+  if (!BOOK.length) BOOK.push(newStockPanel());
+  bookRender();
+}
+
+function bookRender() {
+  $("bookPanels").innerHTML = BOOK.map((p, i) => `<div class="card book-panel" data-i="${i}" style="border-left-color:${PANEL_BORDERS[i % PANEL_BORDERS.length]}">
+    <div class="head"><h3>Panel ${i + 1} · ${p.kind === "stock" ? "📈 Bourse" : "🌍 Banque mondiale"}</h3>
+      <span><button class="linkbtn" data-act="up" ${i ? "" : "disabled"}>↑</button><button class="linkbtn" data-act="down" ${i < BOOK.length - 1 ? "" : "disabled"}>↓</button>
+      <button class="linkbtn" data-act="dup">Dupliquer</button><button class="linkbtn err" data-act="del">Supprimer</button></span></div>
+    <div class="grid">
+      <div style="grid-column: span 2"><label>Nom de l'onglet (vide = automatique)</label><input data-f="title" maxlength="31" value="${esc(p.title)}" placeholder="${esc(bookAutoTitle(p, i))}"></div>
+      ${p.kind === "stock" ? `
+      <div><label>Intervalle</label><select data-f="interval" data-rerender="1">${[...new Set(SUMMARY.map((s) => s.interval))].concat(SUMMARY.length ? [] : ["1d"])
+        .map((v) => `<option value="${esc(v)}" ${v === p.interval ? "selected" : ""}>${esc(INTERVAL_LABELS[v] || v)}</option>`).join("")}</select></div>
+      <div><label>Variable</label><select data-f="variable">${Object.entries(VAR_LABELS).map(([v, l]) => `<option value="${v}" ${v === p.variable ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
+      <div><label>Format</label><select data-f="format">${Object.entries(FORMAT_LABELS).map(([v, l]) => `<option value="${v}" ${v === p.format ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
+      <div><label>Du</label><input type="date" data-f="start" value="${esc(p.start)}"></div>
+      <div><label>Au</label><input type="date" data-f="end" value="${esc(p.end)}"></div>` : `
+      <div style="grid-column: span 2"><label>Indicateur</label><select data-f="indicator" data-rerender="1"><option value="">— choisir —</option>${WB_SUMMARY
+        .map((m) => `<option value="${esc(m.id)}" ${m.id === p.indicator ? "selected" : ""}>${esc(m.name)}</option>`).join("")}</select></div>
+      <div><label>Format</label><select data-f="format">${["long", "wide"].map((v) => `<option value="${v}" ${v === p.format ? "selected" : ""}>${FORMAT_LABELS[v]}</option>`).join("")}</select></div>
+      <div><label>De l'année</label><input type="number" data-f="start" value="${esc(p.start)}" placeholder="toutes"></div>
+      <div><label>À l'année</label><input type="number" data-f="end" value="${esc(p.end)}" placeholder="toutes"></div>`}
+    </div>
+    <label>${p.kind === "stock" ? "Actions / indices" : "Pays"} (clique pour sélectionner)</label>
+    <div class="chips" data-chips></div>
+  </div>`).join("") || '<div class="card"><p class="hint">Aucun panel. Ajoute-en un avec les boutons ci-dessus.</p></div>';
+
+  $("bookPanels").querySelectorAll(".book-panel").forEach((card) => {
+    const i = +card.dataset.i, p = BOOK[i];
+    card.querySelectorAll("[data-f]").forEach((el) => {
+      el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => {
+        p[el.dataset.f] = el.value;
+        if (el.dataset.f === "interval") p.tickers = [];
+        if (el.dataset.f === "indicator") p.countries = [];
+        bookSave();
+        if (el.dataset.rerender) bookRender();
+      });
+    });
+    card.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => {
+      const a = b.dataset.act;
+      if (a === "del" && !confirm(`Supprimer le panel ${i + 1} ?`)) return;
+      if (a === "del") BOOK.splice(i, 1);
+      if (a === "dup") BOOK.splice(i + 1, 0, { ...structuredClone(p), title: "" });
+      if (a === "up") [BOOK[i - 1], BOOK[i]] = [BOOK[i], BOOK[i - 1]];
+      if (a === "down") [BOOK[i + 1], BOOK[i]] = [BOOK[i], BOOK[i + 1]];
+      bookSave(); bookRender();
+    });
+    bookRenderChips(card.querySelector("[data-chips]"), p);
+  });
+}
+
+async function bookRenderChips(box, p) {
+  let items; // [id, libellé]
+  if (p.kind === "stock") {
+    items = SUMMARY.filter((s) => s.interval === p.interval).map((s) => [s.ticker, s.name ? `${s.name} (${s.ticker})` : s.ticker]);
+    if (!items.length) return (box.innerHTML = '<span class="hint">Aucune action pour cet intervalle dans ta base.</span>');
+  } else {
+    if (!p.indicator) return (box.innerHTML = '<span class="hint">Choisis d\'abord un indicateur.</span>');
+    const doc = await wbGetDoc(p.indicator);
+    items = [...new Map(doc.rows.map((r) => [r[0], r[1]])).entries()].sort((a, b) => a[1].localeCompare(b[1], "fr"));
+  }
+  const key = p.kind === "stock" ? "tickers" : "countries";
+  const draw = () => {
+    box.innerHTML = `<span class="chip" data-all>${p[key].length === items.length ? "tout désélectionner" : "tout sélectionner"}</span>` +
+      items.map(([id, l]) => `<span class="chip ${p[key].includes(id) ? "on" : ""}" data-id="${esc(id)}">${esc(l)}</span>`).join("");
+    box.querySelector("[data-all]").onclick = () => { p[key] = p[key].length === items.length ? [] : items.map((x) => x[0]); bookSave(); draw(); };
+    box.querySelectorAll("[data-id]").forEach((c) => c.onclick = () => {
+      const id = c.dataset.id;
+      p[key] = p[key].includes(id) ? p[key].filter((x) => x !== id) : [...p[key], id];
+      bookSave(); draw();
+    });
+  };
+  draw();
+}
+
+function bookAutoTitle(p, i) {
+  if (p.kind === "stock") return `P${i + 1} ${p.format === "full" ? "complet" : VAR_LABELS[p.variable] || ""} ${p.interval}`.slice(0, 31);
+  const m = WB_SUMMARY.find((x) => x.id === p.indicator);
+  return `P${i + 1} ${m ? m.name : "Banque mondiale"}`.slice(0, 31);
+}
+
+/** Construit les lignes d'un panel boursier. */
+async function bookStockRows(p) {
+  const docs = await Promise.all(p.tickers.map((t) => getDoc(p.interval, t)));
+  const all = docs.flatMap((d) => d.rows
+    .map((r) => Object.fromEntries(COLS.map((c, k) => [c, r[k]])))
+    .filter((r) => (!p.start || r.date >= p.start) && (!p.end || r.date.slice(0, 10) <= p.end))
+    .map((r) => ({ ticker: d.ticker, nom: d.info?.name || "", ...r })));
+  const v = p.variable, label = VAR_LABELS[v];
+  if (p.format === "full") return { rows: all, style: { rowKey: "ticker" } };
+  if (p.format === "long") return { rows: all.map((r) => ({ ticker: r.ticker, nom: r.nom, date: r.date, [label]: r[v] })), style: { rowKey: "ticker" } };
+  const labels = new Map(docs.map((d) => [d.ticker, d.info?.name ? `${d.info.name} (${d.ticker})` : d.ticker]));
+  const byDate = new Map();
+  all.forEach((r) => { if (!byDate.has(r.date)) byDate.set(r.date, {}); byDate.get(r.date)[labels.get(r.ticker)] = r[v]; });
+  const cols = [...labels.values()];
+  return { rows: [...byDate.keys()].sort().map((d) => ({ date: d, ...Object.fromEntries(cols.map((c) => [c, byDate.get(d)[c] ?? null])) })),
+           style: { byColumn: true, fixed: 1 } };
+}
+
+/** Construit les lignes d'un panel Banque mondiale. */
+async function bookWbRows(p) {
+  const doc = await wbGetDoc(p.indicator);
+  const y0 = +p.start || 0, y1 = +p.end || 9999;
+  const rows = doc.rows.filter((r) => p.countries.includes(r[0]) && r[2] >= y0 && r[2] <= y1);
+  if (p.format === "long") {
+    return { rows: rows.map((r) => ({ code_pays: r[0], pays: r[1], annee: r[2], [doc.indicator.name.slice(0, 60)]: r[3] }))
+      .sort((a, b) => (a.pays === b.pays ? a.annee - b.annee : a.pays.localeCompare(b.pays, "fr"))), style: { rowKey: "code_pays" }, name: doc.indicator.name };
+  }
+  const names = [...new Map(rows.map((r) => [r[0], r[1]])).values()];
+  const years = [...new Set(rows.map((r) => r[2]))].sort((a, b) => a - b);
+  return { rows: years.map((y) => ({ annee: y, ...Object.fromEntries(names.map((n) => [n, rows.find((r) => r[1] === n && r[2] === y)?.[3] ?? null])) })),
+           style: { byColumn: true, fixed: 1 }, name: doc.indicator.name };
+}
+
+async function bookGenerate() {
+  const btn = $("bookGo"), out = $("bookResult");
+  const problems = BOOK.map((p, i) => p.kind === "stock" ? (!p.tickers.length && `Panel ${i + 1} : aucune action sélectionnée.`)
+    : (!p.indicator ? `Panel ${i + 1} : aucun indicateur choisi.` : !p.countries.length && `Panel ${i + 1} : aucun pays sélectionné.`)).filter(Boolean);
+  if (!BOOK.length) problems.push("Ajoute au moins un panel.");
+  if (problems.length) return (out.innerHTML = problems.map((m) => `<p class="warn">⚠️ ${esc(m)}</p>`).join(""));
+  btn.disabled = true; btn.textContent = "⏳ Préparation…";
+  try {
+    const wb = XLSX.utils.book_new();
+    const used = new Set(["sommaire"]), summary = [], sheets = [];
+    for (const [i, p] of BOOK.entries()) {
+      const built = p.kind === "stock" ? await bookStockRows(p) : await bookWbRows(p);
+      let sheet = (p.title.trim() || bookAutoTitle(p, i)).replace(/[\\/?*\[\]:]/g, "_").slice(0, 31);
+      for (let k = 2; used.has(sheet.toLowerCase()); k++) sheet = sheet.slice(0, 28) + " " + k;
+      used.add(sheet.toLowerCase());
+      const dates = built.rows.map((r) => String(r.date ?? r.annee ?? "")).filter(Boolean).sort();
+      const who = p.kind === "stock" ? p.tickers.map((t) => SUMMARY.find((s) => s.ticker === t && s.interval === p.interval)?.name || t)
+                                     : p.countries.map((c) => (WB_SUMMARY.length && wbDocs.get(p.indicator)?.rows.find((r) => r[0] === c)?.[1]) || c);
+      summary.push({
+        "n°": i + 1, onglet: sheet, source: p.kind === "stock" ? "Bourse (Yahoo Finance)" : "Banque mondiale",
+        contenu: who.join(", "),
+        variable: p.kind === "stock" ? `${p.format === "full" ? "toutes" : VAR_LABELS[p.variable]} (${INTERVAL_LABELS[p.interval] || p.interval})` : built.name,
+        format: FORMAT_LABELS[p.format], "début": dates[0] || "", fin: dates.at(-1) || "", lignes: built.rows.length,
+      });
+      sheets.push([sheet, built]);
+    }
+    // onglet Sommaire en premier, avec un lien vers chaque panel
+    const ws = styledSheet(summary, { rowKey: "n°" });
+    summary.forEach((r, k) => {
+      const ref = XLSX.utils.encode_cell({ r: k + 1, c: 1 });
+      ws[ref].l = { Target: `#'${r.onglet.replace(/'/g, "''")}'!A1`, Tooltip: "Aller au panel" };
+      ws[ref].s = { ...ws[ref].s, font: { color: { rgb: "1D4ED8" }, underline: true } };
+    });
+    ws["!cols"][3] = { wch: 50 };
+    XLSX.utils.book_append_sheet(wb, ws, "Sommaire");
+    for (const [sheet, built] of sheets) XLSX.utils.book_append_sheet(wb, styledSheet(built.rows, built.style), sheet);
+    XLSX.writeFile(wb, safeName($("bookName").value || "Classeur panels") + ".xlsx");
+    out.innerHTML = `<p class="ok">✅ Classeur généré : Sommaire + ${sheets.length} panel(s).</p>` + table(summary.map(({ contenu, ...r }) => r));
+  } catch (e) {
+    out.innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`;
+  } finally { btn.disabled = false; btn.textContent = "📥 Générer le classeur Excel"; }
+}
 
 // ---------- SQL (sql.js dans le navigateur) ----------
 let SQL, sqlRows = [];
