@@ -243,7 +243,7 @@ GROUP BY ticker, mois ORDER BY ticker, mois</textarea>
 </main>
 
 <script src="vendor/plotly.min.js"></script>
-<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/xlsx-style.min.js"></script>
 <script src="vendor/sql-wasm.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -270,11 +270,21 @@ async function api(path, opts = {}, retry = true) {
 // ---------- tableaux / exports ----------
 // colonnes d'années : pas de séparateur de milliers (2024, pas « 2 024 »)
 const YEAR_COLS = new Set(["année", "annee", "year", "de", "à"]);
+// teintes légères (lisibles en mode clair et sombre) pour distinguer les indices / pays dans les tableaux
+const ROW_TINTS = ["rgba(37,99,235,.13)", "rgba(22,163,74,.13)", "rgba(217,119,6,.15)", "rgba(219,39,119,.12)",
+  "rgba(124,58,237,.13)", "rgba(8,145,178,.14)", "rgba(234,88,12,.13)", "rgba(220,38,38,.12)", "rgba(101,163,13,.14)", "rgba(100,116,139,.15)"];
+const GROUP_COLS = ["ticker", "code_pays", "country"];
 function table(rows, cols) {
   if (!rows.length) return '<p class="hint">Aucune ligne.</p>';
   cols = cols || Object.keys(rows[0]);
+  // une couleur par indice quand le tableau en mélange plusieurs
+  const key = GROUP_COLS.find((k) => k in rows[0]);
+  const tints = new Map();
+  if (key) rows.forEach((r) => { if (!tints.has(r[key])) tints.set(r[key], ROW_TINTS[tints.size % ROW_TINTS.length]); });
+  const colored = tints.size > 1;
   return `<div class="table-wrap"><table><thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${
-    rows.map((r) => `<tr>${cols.map((c) => `<td>${esc(YEAR_COLS.has(c) ? r[c] : fmt(r[c]))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+    rows.map((r) => `<tr${colored ? ` style="background:${tints.get(r[key])}"` : ""}>${
+      cols.map((c) => `<td>${esc(YEAR_COLS.has(c) ? r[c] : fmt(r[c]))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 function saveFile(blob, name) {
   const a = document.createElement("a");
@@ -289,6 +299,48 @@ function exportCsv(rows, name) {
   const ws = XLSX.utils.json_to_sheet(rows);
   saveFile(new Blob(["﻿" + XLSX.utils.sheet_to_csv(ws)], { type: "text/csv" }), name + ".csv");
 }
+// ---------- Excel avec couleurs : une couleur par indice / action / pays ----------
+// [couleur foncée pour l'en-tête, couleur claire pour les lignes]
+const XL_COLORS = [["1D4ED8", "DBEAFE"], ["15803D", "DCFCE7"], ["B45309", "FEF3C7"], ["BE185D", "FCE7F3"],
+  ["6D28D9", "EDE9FE"], ["0E7490", "CFFAFE"], ["C2410C", "FFEDD5"], ["B91C1C", "FEE2E2"], ["4D7C0F", "ECFCCB"], ["334155", "E2E8F0"]];
+const XL_BORDER = { style: "thin", color: { rgb: "D1D5DB" } };
+const xlCell = (fill, header, num) => ({
+  numFmt: num ? "#,##0.00" : undefined,
+  font: header ? { bold: true, color: { rgb: "FFFFFF" } } : {},
+  fill: fill ? { patternType: "solid", fgColor: { rgb: fill } } : undefined,
+  border: { top: XL_BORDER, bottom: XL_BORDER, left: XL_BORDER, right: XL_BORDER },
+  alignment: header ? { vertical: "center", wrapText: true } : {},
+});
+/**
+ * Feuille Excel colorée.
+ *  - rowKey : colonne qui identifie l'indice (panel long) -> chaque indice a sa couleur de ligne
+ *  - byColumn : true -> chaque colonne (sauf les `fixed` premières) a sa couleur (panel large)
+ *  - color : index de couleur imposé à toute la feuille (un onglet = un indice)
+ */
+function styledSheet(rows, { rowKey, byColumn, fixed = 1, color } = {}) {
+  const ws = XLSX.utils.json_to_sheet(rows);
+  if (!rows.length) return ws;
+  const cols = Object.keys(rows[0]);
+  const keyColor = new Map();
+  const colorOf = (k) => { if (!keyColor.has(k)) keyColor.set(k, XL_COLORS[keyColor.size % XL_COLORS.length]); return keyColor.get(k); };
+  cols.forEach((c, j) => {
+    const pal = color != null ? XL_COLORS[color % XL_COLORS.length] : byColumn && j >= fixed ? colorOf(c) : null;
+    ws[XLSX.utils.encode_cell({ r: 0, c: j })].s = xlCell(pal ? pal[0] : "334155", true);
+  });
+  rows.forEach((r, i) => {
+    const rowPal = color != null ? XL_COLORS[color % XL_COLORS.length] : rowKey ? colorOf(r[rowKey]) : null;
+    cols.forEach((c, j) => {
+      const ref = XLSX.utils.encode_cell({ r: i + 1, c: j });
+      ws[ref] ||= { t: "z" };
+      const pal = rowPal || (byColumn && j >= fixed ? colorOf(c) : null);
+      // décimaux affichés avec 2 chiffres (la valeur exacte reste dans la cellule)
+      ws[ref].s = xlCell(pal ? pal[1] : null, false, typeof r[c] === "number" && !Number.isInteger(r[c]));
+    });
+  });
+  ws["!cols"] = cols.map((c) => ({ wch: Math.min(40, Math.max(c.length, ...rows.slice(0, 200).map((r) => String(r[c] ?? "").length)) + 2) }));
+  return ws;
+}
+
 function exportXlsx(rows, name) {
   name = safeName(name);
   const wb = XLSX.utils.book_new();
@@ -300,7 +352,7 @@ function exportXlsx(rows, name) {
     let sheet = (part[0].nom || ticker || "donnees").replace(/[\\/?*\[\]:]/g, "_").slice(0, 31);
     for (let i = 2; used.has(sheet.toLowerCase()); i++) sheet = sheet.slice(0, 28) + " " + i;
     used.add(sheet.toLowerCase());
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(part), sheet);
+    XLSX.utils.book_append_sheet(wb, styledSheet(part, ticker ? { color: used.size - 1 } : {}), sheet);
   }
   XLSX.writeFile(wb, name + ".xlsx");
 }
@@ -629,7 +681,8 @@ $("xlsxBtn").onclick = () => {
   const e = exportData();
   if (e.full) return exportXlsx(e.rows, e.name);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(e.rows), "panel");
+  const long = $("expFormat").value === "long";
+  XLSX.utils.book_append_sheet(wb, styledSheet(e.rows, long ? { rowKey: "ticker" } : { byColumn: true, fixed: 1 }), "panel");
   XLSX.writeFile(wb, safeName(e.name) + ".xlsx");
 };
 $("rawBtn").onclick = () => {
@@ -836,8 +889,8 @@ $("wbRefresh").onclick = () => { wbDocs.clear(); wbLoadSummary(); };
 $("wbCsv").onclick = () => exportCsv(wbCurRows, wbCurName);
 $("wbXlsx").onclick = () => {
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(wbCurRows.pivot || []), "Tableau");
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(wbCurRows), "Donnees (liste)");
+  XLSX.utils.book_append_sheet(wb, styledSheet(wbCurRows.pivot || [], { byColumn: true, fixed: 1 }), "Tableau");
+  XLSX.utils.book_append_sheet(wb, styledSheet(wbCurRows, { rowKey: "code_pays" }), "Donnees (liste)");
   XLSX.writeFile(wb, safeName(wbCurName) + ".xlsx");
 };
 
