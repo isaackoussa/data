@@ -141,7 +141,21 @@
       <div id="chart"></div>
       <h2>Statistiques</h2>
       <div id="stats"></div>
-      <div class="row" style="margin-top:12px">
+      <div class="row" style="margin-top:12px; align-items:flex-end">
+        <div><label for="expFormat">Format d'export</label>
+          <select id="expFormat">
+            <option value="long" selected>Panel long : une ligne par action et par date</option>
+            <option value="wide">Panel large : dates en lignes, une colonne par action</option>
+            <option value="full">Complet : toutes les colonnes, un onglet Excel par action</option>
+          </select></div>
+        <div id="expVarBox"><label for="expVar">Variable</label>
+          <select id="expVar">
+            <option value="open" selected>Prix d'ouverture</option><option value="close">Prix de clôture</option>
+            <option value="adj_close">Clôture ajustée</option><option value="high">Plus haut</option>
+            <option value="low">Plus bas</option><option value="volume">Volume</option>
+          </select></div>
+      </div>
+      <div class="row" style="margin-top:8px">
         <button class="btn" id="csvBtn">⬇️ CSV</button>
         <button class="btn" id="xlsxBtn">⬇️ Excel</button>
         <button class="btn secondary" id="rawBtn">Voir les données brutes</button>
@@ -586,8 +600,38 @@ async function renderView() {
 $("dbInterval").onchange = () => { selected.clear(); renderChips(); };
 ["dbStart", "dbEnd", "base100"].forEach((id) => $(id).onchange = renderView);
 $("refreshBtn").onclick = () => { cache.clear(); loadSummary(); };
-$("csvBtn").onclick = () => exportCsv(current, currentName);
-$("xlsxBtn").onclick = () => exportXlsx(current, currentName);
+// ---------- export (complet ou panel) ----------
+const VAR_LABELS = { open: "ouverture", close: "cloture", adj_close: "cloture ajustee", high: "plus haut", low: "plus bas", volume: "volume" };
+$("expFormat").onchange = () => { $("expVarBox").hidden = $("expFormat").value === "full"; };
+
+/** Renvoie { rows, name } selon le format choisi. */
+function exportData() {
+  const format = $("expFormat").value, v = $("expVar").value;
+  if (format === "full") return { rows: current, name: currentName, full: true };
+  const name = `${currentName} - ${VAR_LABELS[v]} - panel ${format === "long" ? "long" : "large"}`;
+  if (format === "long") {
+    // panel long : identifiant (ticker), temps (date), valeur — trié par action puis par date
+    const rows = current.map((r) => ({ ticker: r.ticker, nom: r.nom, date: r.date, [VAR_LABELS[v]]: r[v] }))
+      .sort((a, b) => (a.ticker === b.ticker ? (a.date < b.date ? -1 : 1) : a.ticker < b.ticker ? -1 : 1));
+    return { rows, name };
+  }
+  // panel large : une ligne par date, une colonne par action (vide si pas de cotation ce jour-là)
+  const labels = new Map();
+  current.forEach((r) => labels.set(r.ticker, r.nom ? `${r.nom} (${r.ticker})` : r.ticker));
+  const byDate = new Map();
+  current.forEach((r) => { if (!byDate.has(r.date)) byDate.set(r.date, { date: r.date }); byDate.get(r.date)[labels.get(r.ticker)] = r[v]; });
+  const cols = ["date", ...labels.values()];
+  const rows = [...byDate.keys()].sort().map((d) => Object.fromEntries(cols.map((c) => [c, byDate.get(d)[c] ?? null])));
+  return { rows, name };
+}
+$("csvBtn").onclick = () => { const e = exportData(); exportCsv(e.rows, e.name); };
+$("xlsxBtn").onclick = () => {
+  const e = exportData();
+  if (e.full) return exportXlsx(e.rows, e.name);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(e.rows), "panel");
+  XLSX.writeFile(wb, safeName(e.name) + ".xlsx");
+};
 $("rawBtn").onclick = () => {
   $("raw").innerHTML = `<p class="hint">${current.length} lignes${current.length > 2000 ? " (2000 premières affichées, l'export contient tout)" : ""}</p>` + table(current.slice(0, 2000));
 };
