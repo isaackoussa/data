@@ -66,6 +66,27 @@
   .book-panel .head h3 { margin: 0; font-size: 1rem; }
   .linkbtn { background: none; border: none; color: var(--accent); cursor: pointer; font: inherit; padding: 2px 4px; }
   .linkbtn.err { color: var(--err); }
+  .welcome { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: -4px 0 14px;
+             padding: 10px 14px; border: 1px solid var(--accent); border-radius: 10px; background: var(--card); }
+  [hidden] { display: none !important; }
+  .guide h2 { margin-top: 0; }
+  .guide h3 { font-size: 1rem; margin: 18px 0 6px; }
+  .guide p, .guide li { line-height: 1.6; }
+  .guide ol, .guide ul { padding-left: 22px; margin: 6px 0; }
+  .guide details { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; margin: 8px 0; background: var(--bg); }
+  .guide summary { cursor: pointer; font-weight: 600; }
+  .guide details[open] summary { margin-bottom: 8px; }
+  .guide dl { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 6px 16px; margin: 0; }
+  .guide dt { font-weight: 600; }
+  .guide dd { margin: 0; color: var(--muted); }
+  @media (max-width: 600px) { .guide dl { grid-template-columns: 1fr; } .guide dd { margin-bottom: 8px; } }
+  .guide pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; overflow-x: auto;
+               font-size: 12.5px; margin: 6px 0; white-space: pre-wrap; }
+  .steps { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); margin-top: 10px; }
+  .step { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--bg); }
+  .step b { display: block; margin-bottom: 4px; }
+  .step .n { display: inline-flex; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: var(--accent-text);
+             align-items: center; justify-content: center; font-size: .85rem; margin-right: 6px; }
   .catalog summary { cursor: pointer; color: var(--accent); font-size: .92rem; }
   .catalog h3 { font-size: .85rem; color: var(--muted); font-weight: 600; margin: 12px 0 6px; }
   #chart { width: 100%; height: 440px; overflow: hidden; }
@@ -76,12 +97,17 @@
 <body>
 <main>
   <h1>📈 Ma base de données économiques et boursières</h1>
+  <div id="welcome" class="welcome" hidden>
+    <span>👋 Première visite ? Le <a href="#" data-goto="guide">guide</a> explique tout en 5 minutes.</span>
+    <button class="linkbtn" id="welcomeClose" aria-label="Fermer">✕</button>
+  </div>
   <nav class="tabs">
     <button data-tab="dl" class="active">⬇️ Télécharger</button>
     <button data-tab="db">🗄️ Ma base</button>
     <button data-tab="wb">🌍 Banque mondiale</button>
     <button data-tab="book">📚 Classeur Excel</button>
     <button data-tab="sql">🔎 Requête SQL</button>
+    <button data-tab="guide">❓ Guide</button>
   </nav>
 
   <!-- ============ Télécharger ============ -->
@@ -267,6 +293,126 @@ GROUP BY ticker, mois ORDER BY ticker, mois</textarea>
       <div id="sqlResult" style="margin-top:12px"></div>
     </div>
   </section>
+  <!-- ============ Guide ============ -->
+  <section id="guide" class="panel guide">
+    <div class="card">
+      <h2>❓ Guide d'utilisation</h2>
+      <p>Cette application sert à <b>constituer ta propre base de données</b> : des cours de bourse (actions, indices,
+        matières premières, devises, cryptos) et des indicateurs économiques de la Banque mondiale (PIB, inflation,
+        population…). Tu télécharges ce qui t'intéresse, tout est enregistré, puis tu le consultes, tu fais des graphiques
+        et tu l'exportes en Excel ou CSV pour tes analyses.</p>
+      <h3>Démarrage rapide</h3>
+      <div class="steps">
+        <div class="step"><b><span class="n">1</span>Choisir</b>Dans <a href="#" data-goto="dl">⬇️ Télécharger</a>, cherche une action
+          ou un indice par son nom (« LVMH », « CAC 40 », « Taïwan »…) ou pioche dans le catalogue.</div>
+        <div class="step"><b><span class="n">2</span>Télécharger</b>Choisis la période (ex. 5 ans) puis clique sur
+          « Télécharger et enregistrer ». Les données sont gardées dans ta base.</div>
+        <div class="step"><b><span class="n">3</span>Consulter</b>Dans <a href="#" data-goto="db">🗄️ Ma base</a>, sélectionne les actions :
+          graphique, statistiques et tableau apparaissent.</div>
+        <div class="step"><b><span class="n">4</span>Exporter</b>Choisis le format (panel long, panel large, complet) et la variable,
+          puis télécharge en Excel ou CSV. Pour plusieurs panels dans un fichier : <a href="#" data-goto="book">📚 Classeur Excel</a>.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Les onglets</h2>
+      <details open><summary>⬇️ Télécharger : récupérer des cours de bourse</summary>
+        <ul>
+          <li><b>Chercher par nom</b> : tape le nom d'une entreprise, d'un indice, d'un pays ou d'une ville. Les résultats marqués ⭐
+            viennent du catalogue (fiables), les autres de Yahoo Finance. Clique sur un résultat pour l'ajouter.</li>
+          <li><b>Catalogue</b> : une soixantaine d'indices mondiaux, matières premières (or, pétrole…), devises et cryptos, classés par
+            région. Un clic ajoute, un second clic retire.</li>
+          <li><b>Tickers</b> : la liste de ce qui sera téléchargé. Tu peux aussi y taper directement des codes, séparés par des virgules.</li>
+          <li><b>Intervalle</b> : journalier, hebdomadaire, mensuel ou intraday (1 heure, 30 min…). L'intraday n'est disponible que
+            sur une courte période (7 jours pour 1 min, 60 jours pour 5 à 30 min, environ 2 ans pour 1 heure).</li>
+          <li><b>Période</b> : une durée (1 an, 5 ans, tout l'historique…) ou des dates précises.</li>
+          <li>Retélécharger une action <b>met à jour</b> la base sans créer de doublons : pratique pour ajouter les derniers jours.</li>
+        </ul></details>
+      <details><summary>🗄️ Ma base : consulter, comparer et exporter</summary>
+        <ul>
+          <li><b>Contenu de la base</b> : une ligne par action enregistrée (nombre de lignes, première et dernière date). Le lien
+            « supprimer » l'efface de la base.</li>
+          <li><b>Actions</b> : clique sur les pastilles pour choisir ce qui est affiché (en bleu = sélectionné).</li>
+          <li><b>Graphique</b> : une seule action → chandeliers (ouverture, plus haut, plus bas, clôture) ; plusieurs → courbes.
+            « Comparer en base 100 » met toutes les courbes au même point de départ pour comparer les performances.</li>
+          <li><b>Statistiques</b> : dernier cours, performance sur la période, plus haut, plus bas, volatilité.</li>
+          <li><b>Export</b> : choisis le <b>format</b> (voir le lexique) et la <b>variable</b> (ouverture, clôture…). Le fichier Excel
+            a une couleur par action ; le fichier porte le nom des données, de l'intervalle et de la période.</li>
+        </ul></details>
+      <details><summary>🌍 Banque mondiale : indicateurs économiques par pays</summary>
+        <ol>
+          <li><b>Indicateur</b> : cherche en français (« PIB », « inflation », « chômage », « électricité »…) ou clique sur un favori.
+            Environ 1 500 indicateurs sont disponibles, de 1960 à aujourd'hui.</li>
+          <li><b>Pays</b> : ajoute-les un par un, par groupe (G7, BRICS, UEMOA, CEMAC, Maghreb, zone euro, régions du monde)
+            ou coche « Tous les pays ».</li>
+          <li><b>Années</b>, puis « Télécharger ». Les nouveaux pays ou années s'ajoutent à ceux déjà enregistrés.</li>
+        </ol>
+        <p>Ensuite : graphique par pays, tableau années × pays, export Excel (onglets « Tableau » et « Donnees (liste) ») ou CSV.
+          <b>Attention</b> : la Banque mondiale n'a pas toujours de données pour tous les pays ni pour l'année la plus récente
+          (souvent 1 à 2 ans de décalage).</p></details>
+      <details><summary>📚 Classeur Excel : plusieurs panels dans un seul fichier</summary>
+        <ol>
+          <li>Ajoute des panels avec « + Panel boursier » ou « + Panel Banque mondiale ».</li>
+          <li>Pour chacun : actions ou pays, dates, variable, format et (si tu veux) le nom de l'onglet.</li>
+          <li>« Générer le classeur Excel » : tu obtiens un onglet <b>Sommaire</b> (avec liens cliquables) puis un onglet par panel.</li>
+        </ol>
+        <p>Exemple : panel 1 = Apple et Microsoft en janvier (ouverture, panel long) ; panel 2 = LVMH et CAC 40 en février
+          (clôture, panel large) ; panel 3 = PIB de l'UEMOA depuis 2010. Les boutons ↑ ↓ réordonnent, « Dupliquer » copie un panel
+          (pratique pour changer seulement les dates). La composition est <b>mémorisée dans ce navigateur</b>.</p>
+        <p>Les panels utilisent les données <b>déjà enregistrées</b> : télécharge-les d'abord.</p></details>
+      <details><summary>🔎 Requête SQL : pour les utilisateurs avancés</summary>
+        <p>Toute la base est copiée dans ton navigateur et interrogeable en SQL (SQLite). Tes données enregistrées ne peuvent pas être
+          modifiées depuis cet onglet. Clique sur un exemple pour le charger :</p>
+        <div id="sqlExamples"></div></details>
+    </div>
+
+    <div class="card">
+      <h2>Lexique</h2>
+      <dl>
+        <dt>Ticker</dt><dd>Le code d'une valeur chez Yahoo Finance. Ex. <code>AAPL</code> (Apple), <code>MC.PA</code> (LVMH à Paris),
+          <code>^FCHI</code> (CAC 40). Le suffixe indique la bourse : <code>.PA</code> Paris, <code>.DE</code> Francfort, <code>.L</code> Londres…
+          Le <code>^</code> désigne un indice, <code>=F</code> un contrat à terme (matières premières), <code>=X</code> une devise.</dd>
+        <dt>Indice</dt><dd>Un panier d'actions qui résume un marché (CAC 40, S&amp;P 500, Nikkei…).</dd>
+        <dt>Ouverture / Clôture</dt><dd>Le prix au premier et au dernier échange de la période (jour, semaine…).</dd>
+        <dt>Plus haut / Plus bas</dt><dd>Le prix maximum et minimum atteint pendant la période.</dd>
+        <dt>Clôture ajustée</dt><dd>La clôture corrigée des dividendes et des divisions d'actions. À utiliser pour calculer des
+          rendements sur longue période.</dd>
+        <dt>Volume</dt><dd>Le nombre de titres échangés pendant la période.</dd>
+        <dt>Panel long</dt><dd>Une ligne par action et par date : <code>ticker | nom | date | valeur</code>. C'est le format attendu
+          par Stata, EViews, R (<code>plm</code>), Python (<code>linearmodels</code>) pour l'économétrie des données de panel.</dd>
+        <dt>Panel large</dt><dd>Une ligne par date et une colonne par action. Pratique dans Excel pour les graphiques et les
+          corrélations. Case vide = pas de cotation ce jour-là (bourse fermée).</dd>
+        <dt>Complet</dt><dd>Toutes les colonnes (ouverture, plus haut, plus bas, clôture, clôture ajustée, volume).</dd>
+        <dt>Base 100</dt><dd>Chaque série est divisée par sa première valeur puis multipliée par 100 : toutes partent de 100, ce qui
+          permet de comparer les performances quel que soit le niveau de prix.</dd>
+        <dt>Performance</dt><dd>Variation en % entre la première et la dernière clôture ajustée de la période affichée.</dd>
+        <dt>Volatilité</dt><dd>Écart-type des variations d'une période à l'autre, en %. Plus elle est élevée, plus le prix bouge.</dd>
+      </dl>
+    </div>
+
+    <div class="card">
+      <h2>Problèmes fréquents</h2>
+      <details><summary>« ticker introuvable » ou « aucune donnée »</summary>
+        <p>Le code n'existe pas chez Yahoo ou a changé. Utilise la <b>recherche par nom</b> plutôt que de taper le code. Pour une période
+          très ancienne ou un intervalle intraday trop long, Yahoo peut aussi ne rien renvoyer : réduis la période.</p></details>
+      <details><summary>La recherche par nom ne trouve pas ce que je veux</summary>
+        <p>Essaie le nom en anglais, le pays, la ville de la bourse ou le nom officiel de l'indice (ex. « Johannesburg » pour la bourse
+          d'Afrique du Sud). Les résultats ⭐ du catalogue sont les plus fiables.</p></details>
+      <details><summary>Il manque des dates ou les dates ne correspondent pas entre deux actions</summary>
+        <p>Chaque bourse a ses jours fériés. En panel large, une case vide signifie que la bourse était fermée ce jour-là. En panel long,
+          la ligne est simplement absente.</p></details>
+      <details><summary>Le site demande un mot de passe</summary>
+        <p>L'application est protégée. Demande le mot de passe à la personne qui gère le site. Il est demandé une seule fois par
+          navigateur.</p></details>
+      <details><summary>Les couleurs n'apparaissent pas dans mon fichier</summary>
+        <p>Les couleurs ne sont possibles qu'en <b>Excel</b> (.xlsx). Le format CSV est du texte brut, sans mise en forme.</p></details>
+      <details><summary>Mes données sont-elles sauvegardées ?</summary>
+        <p>Oui : tout ce que tu télécharges est enregistré sur le serveur et retrouvé à chaque visite, sur n'importe quel appareil.
+          Seule la composition du <b>Classeur Excel</b> est mémorisée dans ton navigateur uniquement.</p></details>
+      <p class="hint" style="margin-top:12px">Sources : cours de bourse <b>Yahoo Finance</b> (usage personnel, données gratuites
+        non officielles) ; indicateurs <b>Banque mondiale</b> (World Development Indicators, licence ouverte CC BY 4.0).</p>
+    </div>
+  </section>
 </main>
 
 <script src="vendor/plotly.min.js"></script>
@@ -399,7 +545,16 @@ function fileName(series, interval) {
 }
 
 // ---------- onglets ----------
+const goTab = (name) => { document.querySelector(`.tabs button[data-tab="${name}"]`).click(); window.scrollTo({ top: 0, behavior: "smooth" }); };
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("[data-goto]");
+  if (a) { e.preventDefault(); goTab(a.dataset.goto); }
+});
+// bandeau de bienvenue (une seule fois par navigateur)
+try { if (!localStorage.getItem("welcome_seen")) $("welcome").hidden = false; } catch {}
+$("welcomeClose").onclick = () => { $("welcome").hidden = true; try { localStorage.setItem("welcome_seen", "1"); } catch {} };
 document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
+  if (b.dataset.tab === "guide") { $("welcome").hidden = true; try { localStorage.setItem("welcome_seen", "1"); } catch {} }
   document.querySelectorAll(".tabs button, .panel").forEach((e) => e.classList.remove("active"));
   b.classList.add("active"); $(b.dataset.tab).classList.add("active");
   if (b.dataset.tab === "db") loadSummary();
@@ -1142,6 +1297,18 @@ $("sqlBtn").onclick = async () => {
     $("sqlResult").innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`;
   } finally { btn.disabled = false; }
 };
+const SQL_EXAMPLES = [
+  ["Cours moyen et volume par mois", "SELECT ticker, substr(date, 1, 7) AS mois, ROUND(AVG(close), 2) AS cours_moyen, SUM(volume) AS volume\nFROM prices WHERE interval = '1d'\nGROUP BY ticker, mois ORDER BY ticker, mois"],
+  ["Plus haut et plus bas historiques", "SELECT p.ticker, t.name, MIN(p.low) AS plus_bas, MAX(p.high) AS plus_haut, MIN(p.date) AS depuis\nFROM prices p JOIN tickers t USING (ticker)\nWHERE p.interval = '1d' GROUP BY p.ticker ORDER BY p.ticker"],
+  ["Rendement journalier (%)", "SELECT ticker, date, ROUND(100.0 * (adj_close / LAG(adj_close) OVER (PARTITION BY ticker ORDER BY date) - 1), 3) AS rendement_pct\nFROM prices WHERE interval = '1d' ORDER BY ticker, date"],
+  ["Prix d'ouverture en panel long", "SELECT ticker, date, open AS ouverture\nFROM prices WHERE interval = '1d' AND date BETWEEN '2024-01-01' AND '2024-12-31'\nORDER BY ticker, date"],
+  ["Dernière valeur Banque mondiale par pays", "SELECT indicator_name, country_name, year, value\nFROM worldbank w\nWHERE year = (SELECT MAX(year) FROM worldbank x WHERE x.indicator = w.indicator AND x.country = w.country)\nORDER BY indicator_name, value DESC"],
+  ["Croiser bourse et Banque mondiale", "-- performance annuelle du CAC 40 et croissance du PIB de la France\nSELECT substr(p.date, 1, 4) AS annee,\n  ROUND(100.0 * (MAX(CASE WHEN p.date = (SELECT MAX(date) FROM prices WHERE ticker = '^FCHI' AND interval = '1d' AND substr(date,1,4) = substr(p.date,1,4)) THEN p.adj_close END)\n   / MAX(CASE WHEN p.date = (SELECT MIN(date) FROM prices WHERE ticker = '^FCHI' AND interval = '1d' AND substr(date,1,4) = substr(p.date,1,4)) THEN p.adj_close END) - 1), 2) AS perf_cac40_pct,\n  (SELECT ROUND(value, 2) FROM worldbank WHERE indicator = 'NY.GDP.MKTP.KD.ZG' AND country = 'FRA' AND year = CAST(substr(p.date, 1, 4) AS INTEGER)) AS croissance_pib_fr\nFROM prices p WHERE p.ticker = '^FCHI' AND p.interval = '1d'\nGROUP BY annee ORDER BY annee"],
+];
+$("sqlExamples").innerHTML = SQL_EXAMPLES.map(([t, q], i) => `<p style="margin:10px 0 2px"><b>${esc(t)}</b> · <a href="#" data-sqlex="${i}">charger dans l'onglet SQL →</a></p><pre>${esc(q)}</pre>`).join("");
+$("sqlExamples").querySelectorAll("[data-sqlex]").forEach((a) => a.onclick = (e) => {
+  e.preventDefault(); $("sqlText").value = SQL_EXAMPLES[+a.dataset.sqlex][1]; goTab("sql");
+});
 const sqlName = () => {
   const d = new Date(), z = (n) => String(n).padStart(2, "0");
   return `Requete SQL - ${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}h${z(d.getMinutes())}`;
