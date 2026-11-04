@@ -62,6 +62,9 @@
   .wb-selected { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 8px; }
   .wb-selected b { display: block; }
   .book-panel { border-left: 5px solid var(--accent); }
+  #bdBondsTable input, #bdBondsTable select { padding: 4px 6px; font-size: .85rem; min-width: 70px; }
+  #bdBondsTable td { padding: 3px 4px; }
+  #bdBondsTable tr.incomplete td:first-child { box-shadow: inset 4px 0 0 var(--warn); }
   .book-panel .head { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 8px; }
   .book-panel .head h3 { margin: 0; font-size: 1rem; }
   .linkbtn { background: none; border: none; color: var(--accent); cursor: pointer; font: inherit; padding: 2px 4px; }
@@ -105,6 +108,7 @@
     <button data-tab="dl" class="active">⬇️ Télécharger</button>
     <button data-tab="db">🗄️ Ma base</button>
     <button data-tab="wb">🌍 Banque mondiale</button>
+    <button data-tab="bonds">🏦 Obligations BRVM</button>
     <button data-tab="book">📚 Classeur Excel</button>
     <button data-tab="sql">🔎 Requête SQL</button>
     <button data-tab="guide">❓ Guide</button>
@@ -254,6 +258,150 @@
     </div>
   </section>
 
+  <!-- ============ Obligations BRVM ============ -->
+  <section id="bonds" class="panel">
+    <div class="card">
+      <h2 style="margin-top:0">🏦 Obligations BRVM : cours, rendements et liquidité</h2>
+      <p class="hint">Quatre étapes : <b>1.</b> alimenter les cotations (automatiquement chaque soir depuis brvm.org, ou par import) ·
+        <b>2.</b> compléter les caractéristiques de chaque obligation (coupon, échéance, amortissement…) ·
+        <b>3.</b> ajouter des taux de référence (BCEAO, UMOA-Titres) · <b>4.</b> calculer et exporter le panel.</p>
+      <div class="row" id="bdSubtabs" style="gap:6px">
+        <span class="chip on" data-sub="bdQuotes">1. Cotations</span>
+        <span class="chip" data-sub="bdChars">2. Caractéristiques</span>
+        <span class="chip" data-sub="bdRefs">3. Taux de référence</span>
+        <span class="chip" data-sub="bdAnalysis">4. Analyse et export</span>
+      </div>
+    </div>
+
+    <!-- 1. Cotations -->
+    <div class="bd-sub" id="bdQuotes">
+      <div class="card">
+        <h2 style="margin-top:0">Récupération automatique (brvm.org)</h2>
+        <p class="hint">Chaque jour de semaine à 18 h 30 (heure d'Abidjan), l'application lit la cote des obligations sur brvm.org et
+          l'enregistre. ⚠️ <b>Fonction en test</b> : le format de la page BRVM n'a pas encore pu être vérifié. Utilise « Tester » pour voir
+          ce qui est lu sans rien enregistrer.</p>
+        <div class="row">
+          <button class="btn secondary" id="bdTest">🔍 Tester la lecture</button>
+          <button class="btn" id="bdFetch">⬇️ Récupérer la cote maintenant</button>
+        </div>
+        <div id="bdFetchResult" style="margin-top:12px"></div>
+        <details style="margin-top:10px"><summary class="hint" style="cursor:pointer">Journal des récupérations</summary><div id="bdLog"></div></details>
+      </div>
+      <div class="card">
+        <h2 style="margin-top:0">Importer des cotations (Excel ou CSV)</h2>
+        <p class="hint">Pour l'historique (Bulletins Officiels de la Cote, Sika Finance, Richbourse, fichier acheté à la BRVM…). Colonnes
+          reconnues : <code>symbole</code>, <code>date</code>, <code>cours</code>, <code>volume</code> (nombre de titres), <code>valeur</code>
+          (FCFA, facultatif). Les dates peuvent être au format 31/12/2024 ou 2024-12-31. Une ligne existante (même obligation, même date) est remplacée.</p>
+        <div class="row">
+          <input type="file" id="bdQuoteFile" accept=".xlsx,.xls,.csv" style="width:auto">
+          <button class="btn secondary" id="bdQuoteTemplate">⬇️ Modèle de fichier</button>
+        </div>
+        <div id="bdQuotePreview" style="margin-top:12px"></div>
+      </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h2 style="margin:0">Cotations enregistrées</h2>
+          <button class="btn secondary" id="bdQuotesRefresh">↻ Actualiser</button></div>
+        <div id="bdQuoteSummary" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <!-- 2. Caractéristiques -->
+    <div class="bd-sub" id="bdChars" hidden>
+      <div class="card">
+        <h2 style="margin-top:0">Caractéristiques des obligations</h2>
+        <p class="hint">Indispensables pour calculer les rendements. À remplir à partir des prospectus / notes d'information (BRVM, CREPMF,
+          émetteur). Les obligations apparaissent ici automatiquement dès qu'elles ont des cotations. <b>Amortissement</b> : <i>in fine</i>
+          (tout à l'échéance), <i>constant</i> (parts égales à chaque échéance après le différé), <i>personnalisé</i> (saisir
+          <code>2027-06-30:20; 2028-06-30:20; …</code> = date et % du nominal initial remboursé). Astuce : exporte le tableau en Excel,
+          complète-le, puis réimporte-le.</p>
+        <div class="row">
+          <button class="btn secondary" id="bdAddBond">+ Ajouter une obligation</button>
+          <button class="btn" id="bdSaveBonds">💾 Enregistrer</button>
+          <button class="btn secondary" id="bdExportBonds">⬇️ Exporter en Excel</button>
+          <label class="btn secondary" style="font-weight:500">⬆️ Importer un Excel<input type="file" id="bdImportBonds" accept=".xlsx,.xls,.csv" hidden></label>
+          <span id="bdBondsStatus" class="hint"></span>
+        </div>
+        <div class="table-wrap" style="max-height:560px;margin-top:12px"><table id="bdBondsTable"></table></div>
+      </div>
+    </div>
+
+    <!-- 3. Références -->
+    <div class="bd-sub" id="bdRefs" hidden>
+      <div class="card">
+        <h2 style="margin-top:0">Taux de référence</h2>
+        <p class="hint">Séries de taux (en %) servant à calculer l'écart de rendement (<i>spread</i>) de chaque obligation : par exemple
+          « BCEAO taux directeur » (taux minimum de soumission aux appels d'offres d'injection de liquidité), ou les rendements moyens
+          pondérés des émissions UMOA-Titres par pays et par maturité (« UMOA CI 3 ans »…). La valeur utilisée pour un jour donné est la
+          dernière connue à cette date. Sources : <a href="https://www.bceao.int" target="_blank" rel="noopener">bceao.int</a>,
+          <a href="https://www.umoatitres.org" target="_blank" rel="noopener">umoatitres.org</a>.</p>
+        <div class="grid">
+          <div style="grid-column: span 2"><label for="bdRefName">Nom de la série</label><input id="bdRefName" list="bdRefNames" placeholder="ex. BCEAO taux directeur"><datalist id="bdRefNames"></datalist></div>
+        </div>
+        <label for="bdRefText">Valeurs : une ligne par date, « date ; taux » (ex. <code>16/06/2023 ; 3,25</code>), ou importe un fichier à deux colonnes (date, taux)</label>
+        <textarea id="bdRefText" placeholder="2022-06-16 ; 2,25&#10;2022-09-16 ; 2,50"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="bdRefSave">💾 Ajouter à la série</button>
+          <input type="file" id="bdRefFile" accept=".xlsx,.xls,.csv" style="width:auto">
+        </div>
+        <div id="bdRefResult" style="margin-top:8px"></div>
+        <div id="bdRefList" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <!-- 4. Analyse -->
+    <div class="bd-sub" id="bdAnalysis" hidden>
+      <div class="card">
+        <h2 style="margin-top:0">Analyse et export du panel</h2>
+        <div class="grid">
+          <div><label for="bdBasis">Le cours est exprimé en % du…</label><select id="bdBasis">
+            <option value="outstanding">capital restant dû (par défaut)</option><option value="initial">nominal initial</option></select></div>
+          <div><label for="bdClean">Type de cours</label><select id="bdClean">
+            <option value="1">pied de coupon (hors coupon couru)</option><option value="0">coupon couru inclus</option></select></div>
+          <div><label for="bdNet">Rendement</label><select id="bdNet">
+            <option value="0">brut</option><option value="1">net d'impôt sur les coupons</option></select></div>
+          <div><label for="bdRef">Référence par défaut (spread)</label><select id="bdRef"></select></div>
+          <div><label for="bdFreq">Panel</label><select id="bdFreq">
+            <option value="day">quotidien (obligation × jour)</option><option value="month">mensuel (obligation × mois)</option></select></div>
+          <div><label for="bdFrom">Du</label><input type="date" id="bdFrom"></div>
+          <div><label for="bdTo">Au</label><input type="date" id="bdTo"></div>
+        </div>
+        <p class="hint">Un cours supérieur à 200 est interprété comme un prix en FCFA par titre (converti en % avec le nominal) ; sinon en %.
+          ⚠️ Vérifie la convention de cotation de la BRVM pour tes obligations et ajuste les deux premiers réglages si besoin.</p>
+        <button class="btn" id="bdRun">🧮 Calculer</button>
+        <div id="bdRunResult" style="margin-top:12px"></div>
+      </div>
+      <div class="card" id="bdResultCard" hidden>
+        <h2 style="margin-top:0">Résumé par obligation</h2>
+        <div id="bdSummary"></div>
+        <h2>Rendements</h2>
+        <div class="chips" id="bdChartChips"></div>
+        <div id="bdChart" style="width:100%;height:420px;overflow:hidden;margin-top:8px"></div>
+        <h2>Export</h2>
+        <div class="row">
+          <button class="btn" id="bdXlsx">⬇️ Excel</button>
+          <button class="btn" id="bdCsv">⬇️ CSV</button>
+        </div>
+        <details style="margin-top:12px"><summary class="hint" style="cursor:pointer">Lire le fichier dans Stata ou R</summary>
+          <pre>* Stata
+import excel "panel_obligations.xlsx", sheet("panel") firstrow clear
+encode symbole, gen(id)
+gen t = date(date, "YMD")        // panel mensuel : gen t = monthly(mois, "YM")
+format t %td
+xtset id t
+xtreg spread_pb part_sans_transaction amihud duree_vie_moy i.t, fe</pre>
+          <pre># R
+library(readxl); library(plm)
+d <- read_excel("panel_obligations.xlsx", sheet = "panel")
+p <- pdata.frame(d, index = c("symbole", "date"))
+summary(plm(spread_pb ~ part_sans_transaction + amihud + duree_vie_moy, data = p, model = "within", effect = "twoways"))</pre>
+          <p class="hint">Les noms de colonnes sont sans accents ni espaces, compatibles Stata et R. L'onglet « caracteristiques » du fichier
+            Excel reprend les données de chaque obligation (pays, type, coupon, fiscalité, éligibilité BCEAO…), et l'onglet « lisez-moi »
+            décrit chaque variable.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ Classeur Excel multi-panels ============ -->
   <section id="book" class="panel">
     <div class="card">
@@ -281,7 +429,9 @@
       <p class="hint">Interroge toute ta base en SQL (SQLite, exécuté dans ton navigateur : tes données stockées ne sont jamais modifiées).<br>
         Tables : <code>prices(ticker, interval, date, open, high, low, close, adj_close, volume)</code> et
         <code>tickers(ticker, name, exchange, currency, type)</code> et
-        <code>worldbank(indicator, indicator_name, country, country_name, year, value)</code>.</p>
+        <code>worldbank(indicator, indicator_name, country, country_name, year, value)</code>,
+        <code>brvm_quotes(symbol, date, price, volume, value)</code>, <code>brvm_bonds(symbol, name, issuer, country, type, nominal, coupon, freq, issue, maturity, amort, deferral, amount, tax, eligible, ref)</code>
+        et <code>brvm_refs(series, date, rate)</code>.</p>
       <textarea id="sqlText">SELECT ticker, substr(date, 1, 7) AS mois, ROUND(AVG(close), 2) AS cours_moyen, SUM(volume) AS volume
 FROM prices WHERE interval = '1d'
 GROUP BY ticker, mois ORDER BY ticker, mois</textarea>
@@ -350,6 +500,25 @@ GROUP BY ticker, mois ORDER BY ticker, mois</textarea>
         <p>Ensuite : graphique par pays, tableau années × pays, export Excel (onglets « Tableau » et « Donnees (liste) ») ou CSV.
           <b>Attention</b> : la Banque mondiale n'a pas toujours de données pour tous les pays ni pour l'année la plus récente
           (souvent 1 à 2 ans de décalage).</p></details>
+      <details><summary>🏦 Obligations BRVM : cours, rendements et prime de liquidité</summary>
+        <ol>
+          <li><b>Cotations</b> : chaque soir de semaine (18 h 30, heure d'Abidjan), l'application lit la cote des obligations sur brvm.org et
+            l'enregistre : l'historique se construit jour après jour. Pour le passé, importe un fichier Excel ou CSV (symbole, date, cours,
+            volume, valeur) tiré des Bulletins Officiels de la Cote ou d'une autre source. Le bouton « Tester la lecture » montre ce que
+            l'application lit sur brvm.org sans rien enregistrer.</li>
+          <li><b>Caractéristiques</b> : pour chaque obligation, saisis coupon, nombre de coupons par an, dates d'émission et d'échéance,
+            mode d'amortissement (in fine, constant avec différé, ou échéancier personnalisé), montant émis, impôt sur les coupons et
+            éligibilité au refinancement BCEAO. Sans coupon ni dates, le rendement ne peut pas être calculé (ligne marquée en orange).
+            Le plus simple : « Exporter en Excel », compléter le fichier à partir des prospectus, puis « Importer un Excel ».</li>
+          <li><b>Taux de référence</b> : ajoute des séries de taux (taux directeur BCEAO, rendements UMOA-Titres par pays et maturité…)
+            pour calculer les écarts de rendement. Une obligation peut avoir sa propre série (colonne « Série de référence »).</li>
+          <li><b>Analyse et export</b> : règle la convention de cotation, puis « Calculer ». Tu obtiens par obligation : rendement,
+            spread, part des jours sans transaction, Amihud, rotation, et l'export du panel (quotidien ou mensuel) avec les caractéristiques
+            en variables de contrôle, un onglet « lisez-moi » qui décrit chaque variable, et du code Stata / R pour démarrer.</li>
+        </ol>
+        <p><b>À savoir</b> : un jour où une obligation n'apparaît pas, ou a un volume nul, est compté « sans transaction », et son cours
+          reste celui de la dernière transaction (variable <code>cours_fige</code> = 1). Les jours de bourse sont toutes les dates présentes
+          dans les cotations, toutes obligations confondues.</p></details>
       <details><summary>📚 Classeur Excel : plusieurs panels dans un seul fichier</summary>
         <ol>
           <li>Ajoute des panels avec « + Panel boursier » ou « + Panel Banque mondiale ».</li>
@@ -386,6 +555,19 @@ GROUP BY ticker, mois ORDER BY ticker, mois</textarea>
         <dt>Base 100</dt><dd>Chaque série est divisée par sa première valeur puis multipliée par 100 : toutes partent de 100, ce qui
           permet de comparer les performances quel que soit le niveau de prix.</dd>
         <dt>Performance</dt><dd>Variation en % entre la première et la dernière clôture ajustée de la période affichée.</dd>
+        <dt>Rendement actuariel</dt><dd>Le taux annuel qui égalise le prix de l'obligation (coupon couru compris) et la valeur actuelle de
+          ses coupons et remboursements futurs. C'est le « vrai » taux que rapporte l'obligation si on l'achète à ce prix et qu'on la garde.</dd>
+        <dt>Pied de coupon</dt><dd>Cours sans le coupon couru (les intérêts accumulés depuis le dernier paiement). L'acheteur paie le cours +
+          le coupon couru.</dd>
+        <dt>Amortissement</dt><dd>Remboursement du capital. <i>In fine</i> : tout à l'échéance. <i>Constant</i> : par parts égales à chaque
+          échéance, souvent après un différé de quelques années (fréquent pour les emprunts d'État de l'UEMOA).</dd>
+        <dt>Spread</dt><dd>Écart entre le rendement de l'obligation et un taux de référence, en points de base (1 pb = 0,01 %).</dd>
+        <dt>Prime de liquidité</dt><dd>Le supplément de rendement exigé par les investisseurs pour détenir un titre difficile à revendre.</dd>
+        <dt>Jours sans transaction</dt><dd>Part des jours de bourse sans aucun échange sur le titre (mesure de Lesmond, Ogden et Trzcinka, 1999) :
+          plus elle est élevée, moins le titre est liquide.</dd>
+        <dt>Amihud</dt><dd>Variation de prix (en valeur absolue) par million de FCFA échangé (Amihud, 2002) : plus elle est élevée, plus un
+          petit échange fait bouger le prix, donc moins le titre est liquide.</dd>
+        <dt>Rotation</dt><dd>Valeur échangée rapportée à l'encours de l'obligation.</dd>
         <dt>Volatilité</dt><dd>Écart-type des variations d'une période à l'autre, en %. Plus elle est élevée, plus le prix bouge.</dd>
       </dl>
     </div>
@@ -418,6 +600,7 @@ GROUP BY ticker, mois ORDER BY ticker, mois</textarea>
 <script src="vendor/plotly.min.js"></script>
 <script src="vendor/xlsx-style.min.js"></script>
 <script src="vendor/sql-wasm.js"></script>
+<script src="bonds.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const COLS = ["date", "open", "high", "low", "close", "adj_close", "volume"];
@@ -560,6 +743,7 @@ document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
   if (b.dataset.tab === "db") loadSummary();
   if (b.dataset.tab === "wb") wbInit();
   if (b.dataset.tab === "book") bookInit();
+  if (b.dataset.tab === "bonds") bdInit();
 });
 
 // ---------- Recherche par nom + catalogue ----------
@@ -1077,6 +1261,374 @@ $("wbXlsx").onclick = () => {
   XLSX.writeFile(wb, safeName(wbCurName) + ".xlsx");
 };
 
+// ---------- Obligations BRVM ----------
+const BOND_FIELDS = [
+  ["symbol", "Symbole", "text", 90], ["name", "Nom", "text", 220], ["issuer", "Émetteur", "text", 130], ["country", "Pays", "text", 110],
+  ["type", "Type", ["", "État", "Sukuk", "Entreprise", "Organisme régional", "Autre"]], ["nominal", "Nominal (FCFA)", "number", 90],
+  ["coupon", "Coupon (%)", "number", 70], ["freq", "Coupons par an", ["1", "2", "4"]], ["issue", "Date d'émission", "date"],
+  ["maturity", "Échéance", "date"], ["amort", "Amortissement", [["in_fine", "in fine"], ["constant", "constant"], ["custom", "personnalisé"]]],
+  ["deferral", "Différé (ans)", "number", 60], ["customSchedule", "Échéancier personnalisé (date:%; …)", "text", 220],
+  ["amount", "Montant émis (FCFA)", "number", 130], ["tax", "Impôt sur coupons (%)", "number", 70],
+  ["eligible", "Éligible refinancement BCEAO", ["", "oui", "non"]], ["ref", "Série de référence", "ref"], ["notes", "Notes", "text", 180],
+];
+let BONDS = [], BD_QSUM = [], BD_REFS = {}, bdReady = false, bdDirty = false, BD_PANEL = null;
+const bdQuotes = new Map(); // symbole -> cotations
+
+const bdNorm = (h) => String(h || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+function bdNum(v) {
+  if (v == null || v === "") return null;
+  if (typeof v === "number") return v;
+  let t = String(v).replace(/[\s  ]/g, "").replace(/%$/, "");
+  if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(t)) t = t.replace(/\./g, "");
+  const n = Number(t.replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+function bdDate(v) {
+  if (v == null || v === "") return null;
+  if (v instanceof Date && !isNaN(v)) return new Date(Date.UTC(v.getFullYear(), v.getMonth(), v.getDate())).toISOString().slice(0, 10);
+  if (typeof v === "number") { const d = XLSX.SSF.parse_date_code(v); return d ? `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}` : null; }
+  const t = String(v).trim();
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  m = t.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
+  if (m) { const y = m[3].length === 2 ? "20" + m[3] : m[3]; return `${y}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; }
+  return null;
+}
+/** Lit un fichier Excel/CSV et renvoie ses lignes (objets) de la première feuille. */
+async function bdReadFile(file) {
+  // CSV : lu comme texte UTF-8 sans interprétation (sinon « 02/01/2024 » serait lu à l'américaine et « 99,65 » deviendrait 9965) ;
+  // les dates et nombres français sont ensuite convertis par bdDate / bdNum.
+  const wb = /\.csv$/i.test(file.name)
+    ? XLSX.read((await file.text()).replace(/^﻿/, ""), { type: "string", raw: true })
+    : XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+  return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: null, raw: true });
+}
+const bdPickCol = (cols, pats) => cols.find((c) => pats.some((p) => p.test(bdNorm(c))));
+
+async function bdInit() {
+  if (!bdReady) {
+    bdReady = true;
+    $("bdSubtabs").querySelectorAll("[data-sub]").forEach((c) => c.onclick = () => {
+      $("bdSubtabs").querySelectorAll("[data-sub]").forEach((x) => x.classList.toggle("on", x === c));
+      document.querySelectorAll(".bd-sub").forEach((x) => (x.hidden = x.id !== c.dataset.sub));
+    });
+    try {
+      const st = JSON.parse(localStorage.getItem("bd_settings") || "{}");
+      for (const k of ["bdBasis", "bdClean", "bdNet", "bdFreq"]) if (st[k] != null) $(k).value = st[k];
+    } catch {}
+    ["bdBasis", "bdClean", "bdNet", "bdFreq", "bdRef"].forEach((id) => $(id).addEventListener("change", () => {
+      try { localStorage.setItem("bd_settings", JSON.stringify(Object.fromEntries(["bdBasis", "bdClean", "bdNet", "bdFreq", "bdRef"].map((k) => [k, $(k).value])))); } catch {}
+    }));
+  }
+  if (!bdDirty) await bdLoadBonds();
+  await Promise.all([bdLoadQuotes(), bdLoadRefs(), bdLoadLog()]);
+}
+
+// --- 1. cotations ---
+async function bdLoadQuotes() {
+  try { BD_QSUM = (await api("/api/brvm/quotes")).summary; }
+  catch (e) { return ($("bdQuoteSummary").innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`); }
+  if (!BD_QSUM.length) return ($("bdQuoteSummary").innerHTML = '<p class="hint">Aucune cotation enregistrée pour l\'instant.</p>');
+  $("bdQuoteSummary").innerHTML = table(BD_QSUM.map((q) => ({
+    symbole: q.symbol, nom: BONDS.find((b) => b.symbol === q.symbol)?.name || "", jours: q.count, "jours avec échanges": q.traded,
+    "part sans transaction": q.count ? Math.round((1 - q.traded / q.count) * 1000) / 10 + " %" : "", "début": q.start, fin: q.end, "": "" })));
+  $("bdQuoteSummary").querySelectorAll("td:last-child").forEach((td, i) => {
+    const q = BD_QSUM[i];
+    td.innerHTML = '<a href="#" class="err">supprimer</a>';
+    td.firstChild.onclick = async (ev) => {
+      ev.preventDefault();
+      if (!confirm(`Supprimer toutes les cotations de ${q.symbol} ?`)) return;
+      await api("/api/brvm/quotes?symbol=" + encodeURIComponent(q.symbol), { method: "DELETE" });
+      bdQuotes.delete(q.symbol); bdLoadQuotes();
+    };
+  });
+}
+async function bdLoadLog() {
+  try {
+    const { log } = await api("/api/brvm/log");
+    $("bdLog").innerHTML = log.length ? table(log.map((l) => ({ quand: l.at.slice(0, 16).replace("T", " "), "séance": l.date, http: l.status,
+      tableaux: l.tables, lues: l.found, "enregistrées": l.saved, remarque: l.note || "" }))) : '<p class="hint">Aucune récupération pour l\'instant.</p>';
+  } catch {}
+}
+async function bdFetch(save) {
+  const out = $("bdFetchResult"); out.innerHTML = '<p class="hint">Lecture de brvm.org…</p>';
+  try {
+    const r = await api("/api/brvm/fetch", { method: "POST", body: JSON.stringify({ save }) });
+    let html = `<p class="${r.rows.length ? "ok" : "warn"}">${r.rows.length ? "✅" : "⚠️"} Réponse HTTP ${r.status} · ${r.tables} tableau(x) trouvé(s) ·
+      ${r.rows.length} obligation(s) lue(s)${save ? ` · ${r.saved} enregistrée(s)` : " (test : rien enregistré)"}.</p>`;
+    if (r.note) html += `<p class="warn">⚠️ ${esc(r.note)}</p>`;
+    if (r.headers?.length) html += `<p class="hint">En-têtes du tableau : ${r.headers.map((h) => `<code>${esc(h)}</code>`).join(" ")}</p>`;
+    if (r.rows.length) html += table(r.rows.slice(0, 8).map((x) => ({ symbole: x.symbol, nom: x.name, cours: x.price, volume: x.volume, valeur: x.value })));
+    if (r.sample) html += `<details><summary class="hint">Texte de la page (pour diagnostic)</summary><pre style="white-space:pre-wrap">${esc(r.sample)}</pre></details>`;
+    out.innerHTML = html;
+    if (save) { bdLoadQuotes(); bdLoadBonds(); bdLoadLog(); }
+  } catch (e) { out.innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`; }
+}
+$("bdTest").onclick = () => bdFetch(false);
+$("bdFetch").onclick = () => bdFetch(true);
+$("bdQuotesRefresh").onclick = () => { bdQuotes.clear(); bdLoadQuotes(); };
+$("bdQuoteTemplate").onclick = () => {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, styledSheet([
+    { symbole: "EXEMPLE.O1", date: "2024-12-30", cours: 99.5, volume: 120, valeur: 1194000 },
+    { symbole: "EXEMPLE.O1", date: "2024-12-31", cours: 99.5, volume: 0, valeur: null },
+  ], { rowKey: "symbole" }), "cotations");
+  XLSX.writeFile(wb, "Modele cotations obligations.xlsx");
+};
+let bdPending = null;
+$("bdQuoteFile").onchange = async () => {
+  const f = $("bdQuoteFile").files[0]; if (!f) return;
+  const out = $("bdQuotePreview");
+  try {
+    const rows = await bdReadFile(f);
+    if (!rows.length) return (out.innerHTML = '<p class="warn">⚠️ Fichier vide.</p>');
+    const cols = Object.keys(rows[0]);
+    const c = {
+      symbol: bdPickCol(cols, [/^symbole/, /^code/, /^ticker/, /^titre/]), date: bdPickCol(cols, [/^date/, /seance/, /jour/]),
+      price: bdPickCol(cols, [/^cours/, /^prix/, /clotur/, /^price/, /^close/]), volume: bdPickCol(cols, [/^volume/, /quantit/, /nombre/, /titres echang/]),
+      value: bdPickCol(cols, [/^valeur/, /montant/, /^value/]),
+    };
+    const miss = ["symbol", "date", "price"].filter((k) => !c[k]);
+    if (miss.length) return (out.innerHTML = `<p class="err">❌ Colonnes introuvables : ${miss.map((k) => ({ symbol: "symbole", date: "date", price: "cours" })[k]).join(", ")}.
+      Colonnes du fichier : ${cols.map((x) => `<code>${esc(x)}</code>`).join(" ")}</p>`);
+    bdPending = rows.map((r) => ({ symbol: String(r[c.symbol] ?? "").trim().toUpperCase(), date: bdDate(r[c.date]), price: bdNum(r[c.price]),
+      volume: c.volume ? bdNum(r[c.volume]) ?? 0 : 0, value: c.value ? bdNum(r[c.value]) : null }));
+    const ok = bdPending.filter((r) => r.symbol && r.date && r.price != null);
+    const syms = new Set(ok.map((r) => r.symbol));
+    out.innerHTML = `<p>${ok.length} ligne(s) valide(s) sur ${rows.length}, ${syms.size} obligation(s). Colonnes utilisées :
+      ${Object.entries(c).filter(([, v]) => v).map(([k, v]) => `${k} = <code>${esc(v)}</code>`).join(" · ")}</p>` +
+      table(ok.slice(0, 5)) + `<button class="btn" id="bdQuoteImport" style="margin-top:8px">⬆️ Importer ${ok.length} ligne(s)</button>`;
+    $("bdQuoteImport").onclick = async () => {
+      $("bdQuoteImport").disabled = true;
+      try {
+        let done = 0, newBonds = 0;
+        for (let i = 0; i < ok.length; i += 20000) {
+          const r = await api("/api/brvm/quotes", { method: "POST", body: JSON.stringify({ rows: ok.slice(i, i + 20000) }) });
+          done += r.imported; newBonds += r.newBonds;
+        }
+        out.innerHTML = `<p class="ok">✅ ${done} ligne(s) importée(s)${newBonds ? `, ${newBonds} nouvelle(s) obligation(s) ajoutée(s) aux caractéristiques (à compléter)` : ""}.</p>`;
+        bdQuotes.clear(); bdLoadQuotes(); bdLoadBonds();
+      } catch (e) { out.innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`; }
+    };
+  } catch (e) { out.innerHTML = `<p class="err">❌ Lecture du fichier impossible : ${esc(e.message)}</p>`; }
+  $("bdQuoteFile").value = "";
+};
+
+// --- 2. caractéristiques ---
+async function bdLoadBonds() {
+  try { BONDS = (await api("/api/brvm/bonds")).bonds; } catch (e) { return ($("bdBondsStatus").textContent = "❌ " + e.message); }
+  bdDirty = false; bdRenderBonds();
+}
+function bdRenderBonds() {
+  const refNames = Object.keys(BD_REFS);
+  const cell = (b, [k, , type, w]) => {
+    const v = b[k] ?? "";
+    if (Array.isArray(type) || type === "ref") {
+      const opts = type === "ref" ? ["", ...refNames] : type;
+      return `<select data-k="${k}">${opts.map((o) => { const [val, lab] = Array.isArray(o) ? o : [o, o || "—"];
+        return `<option value="${esc(val)}" ${String(v) === String(val) ? "selected" : ""}>${esc(type === "ref" && !val ? "(par défaut)" : lab)}</option>`; }).join("")}</select>`;
+    }
+    return `<input data-k="${k}" type="${type}" value="${esc(v)}" style="width:${w || 120}px" ${type === "number" ? 'step="any"' : ""}>`;
+  };
+  $("bdBondsTable").innerHTML = `<thead><tr>${BOND_FIELDS.map(([, l]) => `<th>${esc(l)}</th>`).join("")}<th></th></tr></thead><tbody>${
+    BONDS.map((b, i) => { const miss = Bonds.missingFields(b);
+      return `<tr data-i="${i}" class="${miss.length ? "incomplete" : ""}" title="${miss.length ? "À compléter : " + esc(miss.join(", ")) : "Complète"}">${
+        BOND_FIELDS.map((f) => `<td>${cell(b, f)}</td>`).join("")}<td><button class="linkbtn err" data-del="${i}">✕</button></td></tr>`; }).join("")}</tbody>`;
+  $("bdBondsTable").querySelectorAll("[data-k]").forEach((el) => el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => {
+    const i = +el.closest("tr").dataset.i;
+    BONDS[i][el.dataset.k] = el.type === "number" ? (el.value === "" ? "" : Number(el.value)) : el.value;
+    if (el.dataset.k === "symbol") BONDS[i].symbol = el.value.toUpperCase();
+    const miss = Bonds.missingFields(BONDS[i]);
+    el.closest("tr").classList.toggle("incomplete", miss.length > 0);
+    bdDirty = true; bdStatus();
+  }));
+  $("bdBondsTable").querySelectorAll("[data-del]").forEach((b) => b.onclick = () => {
+    const i = +b.dataset.del;
+    if (!confirm(`Retirer ${BONDS[i].symbol || "cette ligne"} des caractéristiques ? (les cotations sont conservées)`)) return;
+    BONDS.splice(i, 1); bdDirty = true; bdRenderBonds();
+  });
+  bdStatus();
+}
+function bdStatus() {
+  const complete = BONDS.filter((b) => !Bonds.missingFields(b).length).length;
+  $("bdBondsStatus").innerHTML = `${BONDS.length} obligation(s), ${complete} complète(s)${bdDirty ? ' · <b class="warn">modifications non enregistrées</b>' : ""}`;
+}
+$("bdAddBond").onclick = () => { BONDS.unshift({ symbol: "", nominal: 10000, freq: "1", amort: "in_fine" }); bdDirty = true; bdRenderBonds(); };
+$("bdSaveBonds").onclick = async () => {
+  const syms = BONDS.map((b) => b.symbol).filter(Boolean);
+  const dup = syms.find((s, i) => syms.indexOf(s) !== i);
+  if (dup) return ($("bdBondsStatus").innerHTML = `<span class="err">❌ Symbole en double : ${esc(dup)}</span>`);
+  try { const r = await api("/api/brvm/bonds", { method: "PUT", body: JSON.stringify({ bonds: BONDS }) });
+        bdDirty = false; bdStatus(); $("bdBondsStatus").innerHTML += ` · ✅ ${r.count} enregistrée(s)`; }
+  catch (e) { $("bdBondsStatus").innerHTML = `<span class="err">❌ ${esc(e.message)}</span>`; }
+};
+$("bdExportBonds").onclick = () => {
+  const rows = (BONDS.length ? BONDS : [{}]).map((b) => Object.fromEntries(BOND_FIELDS.map(([k, l]) => [l, b[k] ?? ""])));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, styledSheet(rows, {}), "caracteristiques");
+  XLSX.utils.book_append_sheet(wb, styledSheet([
+    { colonne: "Amortissement", valeurs: "in_fine | constant | custom (personnalisé)" },
+    { colonne: "Échéancier personnalisé", valeurs: "2027-06-30:20; 2028-06-30:20 (date : % du nominal initial remboursé)" },
+    { colonne: "Dates", valeurs: "AAAA-MM-JJ ou JJ/MM/AAAA" }, { colonne: "Coupon, impôt", valeurs: "en %, ex. 6,25" },
+    { colonne: "Éligible refinancement BCEAO", valeurs: "oui | non" },
+  ], {}), "aide");
+  XLSX.writeFile(wb, "Caracteristiques obligations BRVM.xlsx");
+};
+$("bdImportBonds").onchange = async () => {
+  const f = $("bdImportBonds").files[0]; if (!f) return;
+  try {
+    const rows = await bdReadFile(f);
+    const byLabel = new Map(BOND_FIELDS.flatMap(([k, l]) => [[bdNorm(l), k], [bdNorm(k), k]]));
+    let n = 0;
+    for (const r of rows) {
+      const b = {};
+      for (const [col, v] of Object.entries(r)) { const k = byLabel.get(bdNorm(col)); if (k && v != null && v !== "") b[k] = v; }
+      if (!b.symbol) continue;
+      b.symbol = String(b.symbol).trim().toUpperCase();
+      for (const k of ["issue", "maturity"]) if (b[k] != null) b[k] = bdDate(b[k]) || "";
+      for (const k of ["nominal", "coupon", "deferral", "amount", "tax"]) if (b[k] != null) b[k] = bdNum(b[k]) ?? "";
+      if (b.amort) b.amort = { "in fine": "in_fine", "personnalise": "custom", "personnalisé": "custom" }[String(b.amort).toLowerCase()] || b.amort;
+      if (b.freq != null) b.freq = String(b.freq);
+      const i = BONDS.findIndex((x) => x.symbol === b.symbol);
+      if (i >= 0) BONDS[i] = { ...BONDS[i], ...b }; else BONDS.push(b);
+      n++;
+    }
+    bdDirty = true; bdRenderBonds();
+    $("bdBondsStatus").innerHTML += ` · ${n} ligne(s) importée(s) : clique sur « Enregistrer »`;
+  } catch (e) { $("bdBondsStatus").innerHTML = `<span class="err">❌ ${esc(e.message)}</span>`; }
+  $("bdImportBonds").value = "";
+};
+
+// --- 3. références ---
+async function bdLoadRefs() {
+  try { BD_REFS = (await api("/api/brvm/refs")).refs; } catch (e) { return ($("bdRefList").innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`); }
+  const names = Object.keys(BD_REFS);
+  $("bdRefNames").innerHTML = ["BCEAO taux directeur", ...names].map((n) => `<option value="${esc(n)}">`).join("");
+  let saved = ""; try { saved = JSON.parse(localStorage.getItem("bd_settings") || "{}").bdRef || ""; } catch {}
+  $("bdRef").innerHTML = '<option value="">(aucune)</option>' + names.map((n) => `<option ${n === saved ? "selected" : ""}>${esc(n)}</option>`).join("");
+  $("bdRefList").innerHTML = names.length ? table(names.map((n) => ({ "série": n, valeurs: BD_REFS[n].length, "début": BD_REFS[n][0]?.[0],
+    fin: BD_REFS[n].at(-1)?.[0], "dernier taux (%)": BD_REFS[n].at(-1)?.[1], "": "" }))) : '<p class="hint">Aucune série pour l\'instant.</p>';
+  $("bdRefList").querySelectorAll("td:last-child").forEach((td, i) => {
+    td.innerHTML = '<a href="#">voir</a> · <a href="#" class="err">supprimer</a>';
+    const [see, del] = td.querySelectorAll("a");
+    see.onclick = (e) => { e.preventDefault(); $("bdRefName").value = names[i]; $("bdRefText").value = BD_REFS[names[i]].map(([d, r]) => `${d} ; ${String(r).replace(".", ",")}`).join("\n"); };
+    del.onclick = async (e) => { e.preventDefault(); if (!confirm(`Supprimer la série « ${names[i]} » ?`)) return;
+      await api("/api/brvm/refs?series=" + encodeURIComponent(names[i]), { method: "DELETE" }); bdLoadRefs(); };
+  });
+  if (BONDS.length) bdRenderBonds();
+}
+async function bdSaveRef(points) {
+  const series = $("bdRefName").value.trim();
+  if (!series) return ($("bdRefResult").innerHTML = '<p class="warn">⚠️ Donne un nom à la série.</p>');
+  if (!points.length) return ($("bdRefResult").innerHTML = '<p class="warn">⚠️ Aucune valeur valide (format : date ; taux).</p>');
+  try { const r = await api("/api/brvm/refs", { method: "POST", body: JSON.stringify({ series, points }) });
+        $("bdRefResult").innerHTML = `<p class="ok">✅ ${r.imported} valeur(s) ajoutée(s) · ${r.count} au total dans « ${esc(series)} ».</p>`; bdLoadRefs(); }
+  catch (e) { $("bdRefResult").innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`; }
+}
+$("bdRefSave").onclick = () => bdSaveRef($("bdRefText").value.split(/\n+/).map((l) => l.split(/[;\t|]/)).filter((p) => p.length >= 2)
+  .map(([d, r]) => ({ date: bdDate(d.trim()), rate: bdNum(r.trim()) })).filter((p) => p.date && p.rate != null));
+$("bdRefFile").onchange = async () => {
+  const f = $("bdRefFile").files[0]; if (!f) return;
+  const rows = await bdReadFile(f), cols = rows.length ? Object.keys(rows[0]) : [];
+  const cd = bdPickCol(cols, [/date/]) || cols[0], cr = bdPickCol(cols, [/taux/, /rate/, /rendement/, /valeur/]) || cols[1];
+  await bdSaveRef(rows.map((r) => ({ date: bdDate(r[cd]), rate: bdNum(r[cr]) })).filter((p) => p.date && p.rate != null));
+  $("bdRefFile").value = "";
+};
+
+// --- 4. analyse ---
+const BD_VARS = {
+  symbole: "identifiant de l'obligation (symbole BRVM)", date: "date de la séance", mois: "mois (panel mensuel)",
+  cours: "cours coté (dernier connu si pas d'échange)", cours_pct: "cours en % (du capital restant ou du nominal selon le réglage)",
+  volume: "nombre de titres échangés", valeur_fcfa: "valeur échangée en FCFA (fournie ou estimée = volume × cours)",
+  transaction: "1 si au moins un titre échangé ce jour, 0 sinon", cours_fige: "1 si le cours n'est pas issu d'un échange du jour",
+  rendement: "rendement actuariel annuel en %", reference: "taux de référence en % (dernière valeur connue)",
+  spread_pb: "écart rendement − référence, en points de base", duree_vie_moy: "durée de vie moyenne restante (années)",
+  capital_restant_pct: "capital restant dû en % du nominal initial", encours_fcfa: "encours = montant émis × capital restant",
+  rotation: "valeur échangée / encours", amihud: "illiquidité d'Amihud = |rendement log du prix| / valeur échangée (millions FCFA)",
+  rendement_log: "variation log du cours depuis la dernière transaction", jours_bourse: "jours de bourse dans le mois",
+  jours_transaction: "jours avec échanges dans le mois", part_sans_transaction: "part des jours sans transaction (mesure de Lesmond)",
+  amihud_moyen: "moyenne mensuelle de l'illiquidité d'Amihud", cours_fin: "dernier cours du mois", rendement_moyen: "rendement moyen du mois",
+  rendement_fin: "rendement en fin de mois", reference_fin: "référence en fin de mois", spread_moyen_pb: "spread moyen du mois (pb)",
+};
+$("bdRun").onclick = async () => {
+  const out = $("bdRunResult"), btn = $("bdRun"); btn.disabled = true;
+  out.innerHTML = '<p class="hint">Chargement des cotations…</p>';
+  try {
+    // les modifications non enregistrées des caractéristiques sont utilisées telles quelles
+    if (!bdDirty) await bdLoadBonds();
+    await bdLoadRefs();
+    if (!BD_QSUM.length) await bdLoadQuotes();
+    const quotes = {};
+    await Promise.all(BD_QSUM.map(async (q) => {
+      if (!bdQuotes.has(q.symbol)) bdQuotes.set(q.symbol, (await api("/api/brvm/quotes?symbol=" + encodeURIComponent(q.symbol))).rows);
+      quotes[q.symbol] = bdQuotes.get(q.symbol);
+    }));
+    const known = new Set(BONDS.map((b) => b.symbol));
+    const bonds = [...BONDS, ...Object.keys(quotes).filter((s) => !known.has(s)).map((symbol) => ({ symbol }))];
+    const opts = { basis: $("bdBasis").value, clean: $("bdClean").value === "1", net: $("bdNet").value === "1", ref: $("bdRef").value };
+    let daily = Bonds.dailyPanel(bonds, quotes, BD_REFS, opts);
+    const from = $("bdFrom").value, to = $("bdTo").value;
+    daily = daily.filter((r) => (!from || r.date >= from) && (!to || r.date <= to));
+    if (!daily.length) { $("bdResultCard").hidden = true; return (out.innerHTML = '<p class="warn">⚠️ Aucune cotation sur cette période.</p>'); }
+    const monthly = Bonds.monthlyPanel(daily);
+    BD_PANEL = { daily, monthly, bonds, opts };
+    const incomplete = bonds.filter((b) => quotes[b.symbol] && Bonds.missingFields(b).length);
+    out.innerHTML = `<p class="ok">✅ ${daily.length} observations obligation × jour, ${monthly.length} obligation × mois.</p>` +
+      (incomplete.length ? `<p class="warn">⚠️ Rendement non calculé pour ${incomplete.length} obligation(s) aux caractéristiques incomplètes :
+        ${incomplete.slice(0, 12).map((b) => esc(b.symbol)).join(", ")}${incomplete.length > 12 ? "…" : ""} (onglet 2).</p>` : "");
+    const mean = (xs) => { const v = xs.filter((x) => x != null && Number.isFinite(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const r2 = (x, k = 2) => (x == null ? "" : Math.round(x * 10 ** k) / 10 ** k);
+    const bySym = new Map(); daily.forEach((r) => { if (!bySym.has(r.symbole)) bySym.set(r.symbole, []); bySym.get(r.symbole).push(r); });
+    $("bdSummary").innerHTML = table([...bySym.entries()].map(([sym, rs]) => ({
+      symbole: sym, jours: rs.length, "sans transaction (%)": r2(100 * (1 - rs.filter((r) => r.transaction).length / rs.length), 1),
+      "rendement moyen (%)": r2(mean(rs.map((r) => r.rendement))), "spread moyen (pb)": r2(mean(rs.map((r) => r.spread_pb)), 0),
+      "Amihud moyen": r2(mean(rs.map((r) => r.amihud)), 4), "dernier rendement (%)": r2(rs.at(-1).rendement),
+    })));
+    const syms = [...bySym.keys()];
+    const sel = new Set(syms.slice(0, 6));
+    const draw = () => {
+      $("bdChartChips").innerHTML = syms.map((s) => `<span class="chip ${sel.has(s) ? "on" : ""}" data-s="${esc(s)}">${esc(s)}</span>`).join("");
+      $("bdChartChips").querySelectorAll(".chip").forEach((c) => c.onclick = () => { sel.has(c.dataset.s) ? sel.delete(c.dataset.s) : sel.add(c.dataset.s); draw(); });
+      const dark = matchMedia("(prefers-color-scheme: dark)").matches, grid = dark ? "#2a2f39" : "#e3e6eb";
+      Plotly.react("bdChart", [...sel].map((s) => { const rs = bySym.get(s).filter((r) => r.rendement != null);
+        return { type: "scatter", mode: "lines", name: s, x: rs.map((r) => r.date), y: rs.map((r) => r.rendement) }; }), {
+        margin: { l: 50, r: 10, t: 10, b: 40 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+        font: { color: dark ? "#e6e8ec" : "#1a1d23" }, xaxis: { gridcolor: grid }, yaxis: { gridcolor: grid, title: { text: "rendement (%)" } },
+        legend: { orientation: "h" } }, { responsive: true, displaylogo: false });
+    };
+    $("bdResultCard").hidden = false; // visible avant le dessin, pour que le graphique prenne toute la largeur
+    draw();
+  } catch (e) { out.innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`; }
+  finally { btn.disabled = false; }
+};
+function bdExportRows() {
+  const monthly = $("bdFreq").value === "month";
+  const rows = monthly ? BD_PANEL.monthly : BD_PANEL.daily;
+  const chars = new Map(BD_PANEL.bonds.map((b) => [b.symbol, b]));
+  // caractéristiques fixes ajoutées à chaque ligne (variables de contrôle)
+  const full = rows.map((r) => { const b = chars.get(r.symbole) || {};
+    return { ...r, pays: b.country || "", type: b.type || "", coupon: b.coupon ?? null, nominal: b.nominal ?? null,
+             montant_emis: b.amount ?? null, impot_coupons: b.tax ?? null, eligible_bceao: b.eligible === "oui" ? 1 : b.eligible === "non" ? 0 : null,
+             echeance: b.maturity || "" }; });
+  const name = `Panel obligations BRVM - ${monthly ? "mensuel" : "quotidien"} - ${rows[0][monthly ? "mois" : "date"]} a ${rows.at(-1)[monthly ? "mois" : "date"]}`;
+  return { rows: full, name, monthly };
+}
+$("bdCsv").onclick = () => { const e = bdExportRows(); exportCsv(e.rows, e.name); };
+$("bdXlsx").onclick = () => {
+  const e = bdExportRows(), o = BD_PANEL.opts;
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, styledSheet(e.rows, { rowKey: "symbole" }), "panel");
+  XLSX.utils.book_append_sheet(wb, styledSheet(BD_PANEL.bonds.map((b) => Object.fromEntries(BOND_FIELDS.map(([k, l]) => [l, b[k] ?? ""]))), {}), "caracteristiques");
+  const vars = Object.keys(e.rows[0]).map((k) => ({ variable: k, description: BD_VARS[k] || ({ pays: "pays de l'émetteur", type: "type d'émetteur",
+    coupon: "taux de coupon (%)", nominal: "nominal par titre (FCFA)", montant_emis: "montant émis (FCFA)", impot_coupons: "impôt sur les coupons (%)",
+    eligible_bceao: "1 si éligible au refinancement BCEAO", echeance: "date d'échéance" })[k] || "" }));
+  vars.push({ variable: "", description: "" },
+    { variable: "réglages", description: `cours en % du ${o.basis === "initial" ? "nominal initial" : "capital restant dû"} ; ${o.clean ? "pied de coupon" : "coupon couru inclus"} ; rendement ${o.net ? "net d'impôt" : "brut"} ; référence par défaut : ${o.ref || "aucune"}` },
+    { variable: "jours de bourse", description: "toutes les dates présentes dans les cotations, toutes obligations confondues ; un jour sans ligne pour une obligation = sans transaction, cours figé au dernier connu" },
+    { variable: "source", description: "cotations BRVM (récupération automatique brvm.org et/ou imports) ; calculs de l'application" });
+  XLSX.utils.book_append_sheet(wb, styledSheet(vars, {}), "lisez-moi");
+  XLSX.writeFile(wb, safeName(e.name) + ".xlsx");
+};
+
 // ---------- Classeur Excel multi-panels ----------
 const FORMAT_LABELS = { long: "panel long", wide: "panel large", full: "complet" };
 const PANEL_BORDERS = ["#2563eb", "#16a34a", "#d97706", "#db2777", "#7c3aed", "#0891b2", "#ea580c", "#dc2626"];
@@ -1274,7 +1826,11 @@ $("sqlBtn").onclick = async () => {
     const db = new SQL.Database();
     db.run(`CREATE TABLE prices (ticker TEXT, interval TEXT, date TEXT, open REAL, high REAL, low REAL, close REAL, adj_close REAL, volume INTEGER);
             CREATE TABLE tickers (ticker TEXT PRIMARY KEY, name TEXT, exchange TEXT, currency TEXT, type TEXT);
-            CREATE TABLE worldbank (indicator TEXT, indicator_name TEXT, country TEXT, country_name TEXT, year INTEGER, value REAL);`);
+            CREATE TABLE worldbank (indicator TEXT, indicator_name TEXT, country TEXT, country_name TEXT, year INTEGER, value REAL);
+            CREATE TABLE brvm_quotes (symbol TEXT, date TEXT, price REAL, volume REAL, value REAL);
+            CREATE TABLE brvm_bonds (symbol TEXT PRIMARY KEY, name TEXT, issuer TEXT, country TEXT, type TEXT, nominal REAL, coupon REAL, freq INTEGER,
+              issue TEXT, maturity TEXT, amort TEXT, deferral REAL, amount REAL, tax REAL, eligible TEXT, ref TEXT);
+            CREATE TABLE brvm_refs (series TEXT, date TEXT, rate REAL);`);
     const ins = db.prepare("INSERT INTO prices VALUES (?,?,?,?,?,?,?,?,?)");
     const insT = db.prepare("INSERT OR REPLACE INTO tickers VALUES (?,?,?,?,?)");
     db.run("BEGIN");
@@ -1286,7 +1842,23 @@ $("sqlBtn").onclick = async () => {
     const wbDocs = await Promise.all(wbSum.map((m) => wbGetDoc(m.id)));
     const insW = db.prepare("INSERT INTO worldbank VALUES (?,?,?,?,?,?)");
     for (const d of wbDocs) for (const r of d.rows) insW.run([d.indicator.id, d.indicator.name, ...r]);
-    db.run("COMMIT"); ins.free(); insT.free(); insW.free();
+    insW.free();
+    // obligations BRVM
+    const [bq, bb, br] = await Promise.all([api("/api/brvm/quotes"), api("/api/brvm/bonds"), api("/api/brvm/refs")]);
+    const insQ = db.prepare("INSERT INTO brvm_quotes VALUES (?,?,?,?,?)");
+    for (const q of bq.summary) {
+      if (!bdQuotes.has(q.symbol)) bdQuotes.set(q.symbol, (await api("/api/brvm/quotes?symbol=" + encodeURIComponent(q.symbol))).rows);
+      for (const r of bdQuotes.get(q.symbol)) insQ.run([q.symbol, ...r]);
+    }
+    insQ.free();
+    const insB = db.prepare("INSERT OR REPLACE INTO brvm_bonds VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+    for (const b of bb.bonds) insB.run(["symbol", "name", "issuer", "country", "type", "nominal", "coupon", "freq", "issue", "maturity", "amort",
+      "deferral", "amount", "tax", "eligible", "ref"].map((k) => (b[k] === "" || b[k] == null ? null : b[k])));
+    insB.free();
+    const insR = db.prepare("INSERT INTO brvm_refs VALUES (?,?,?)");
+    for (const [sname, pts] of Object.entries(br.refs)) for (const [d, r] of pts) insR.run([sname, d, r]);
+    insR.free();
+    db.run("COMMIT"); ins.free(); insT.free();
     const res = db.exec($("sqlText").value);
     db.close();
     const last = res.at(-1);
