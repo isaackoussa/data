@@ -193,6 +193,11 @@ def pdf_to_text(path):
 
 def download(day, tries=3):
     """Télécharge le BOC d'une date (AAAA-MM-JJ). Renvoie le chemin d'un fichier temporaire ou None s'il n'existe pas."""
+    return next(candidates(day, tries), None)
+
+
+def candidates(day, tries=3):
+    """Toutes les variantes publiées du BOC d'une date (_2, sans suffixe, _1…), chacune dans un fichier temporaire."""
     stamp = day.replace("-", "")
     for suf in SUFFIXES:
         url = BASE.format(stamp, suf)
@@ -206,14 +211,30 @@ def download(day, tries=3):
                 fd, path = tempfile.mkstemp(suffix=".pdf")
                 with os.fdopen(fd, "wb") as f:
                     f.write(data)
-                return path
+                yield path
+                break
             except urllib.error.HTTPError as e:
                 if e.code == 404:
                     break
                 time.sleep(2 ** attempt)
             except (urllib.error.URLError, TimeoutError, ConnectionError):
                 time.sleep(2 ** attempt)
-    return None
+
+
+def read_bulletin(day):
+    """Lignes d'obligations du BOC d'une date. None s'il n'y a pas de bulletin, "illisible" si aucun PDF n'est exploitable."""
+    found = False
+    for path in candidates(day):
+        found = True
+        try:
+            rows = parse_text(pdf_to_text(path))
+            if rows:
+                return rows
+        except subprocess.CalledProcessError:
+            pass  # PDF abîmé : on essaie la variante suivante
+        finally:
+            os.remove(path)
+    return "illisible" if found else None
 
 
 # ---------- stockage ----------
@@ -236,7 +257,8 @@ def update(start, end, data_dir, sleep=0.3, verbose=True):
     os.makedirs(data_dir, exist_ok=True)
     index_path = os.path.join(data_dir, "index.json")
     index = load_json(index_path, {"columns": COLUMNS, "years": [], "seances": [], "sans_bulletin": [], "obligations": {}})
-    done = set(index["seances"]) | set(index["sans_bulletin"])
+    index.setdefault("bulletins_illisibles", [])
+    done = set(index["seances"]) | set(index["sans_bulletin"]) | set(index["bulletins_illisibles"])
     years = {}
     today = dt.date.today()
     d = start
@@ -244,18 +266,18 @@ def update(start, end, data_dir, sleep=0.3, verbose=True):
     while d <= end:
         day = d.isoformat()
         if d.weekday() < 5 and day not in done:
-            path = download(day)
-            if not path:
+            rows = read_bulletin(day)
+            if rows == "illisible":
+                index["bulletins_illisibles"].append(day)
+                if verbose:
+                    print(day, "bulletin publié mais illisible (PDF abîmé)")
+            elif rows is None:
                 # jour férié ou bulletin pas encore publié : on ne mémorise l'absence qu'après quelques jours
                 if (today - d).days > 4:
                     index["sans_bulletin"].append(day)
                 if verbose:
                     print(day, "pas de bulletin")
             else:
-                try:
-                    rows = parse_text(pdf_to_text(path))
-                finally:
-                    os.remove(path)
                 y = d.year
                 if y not in years:
                     years[y] = load_json(os.path.join(data_dir, f"{y}.json"), {"year": y, "rows": []})
@@ -288,6 +310,7 @@ def _flush(index, years, data_dir):
     index["years"] = sorted({int(f[:4]) for f in os.listdir(data_dir) if re.match(r"^\d{4}\.json$", f)})
     index["seances"] = sorted(set(index["seances"]))
     index["sans_bulletin"] = sorted(set(index["sans_bulletin"]))
+    index["bulletins_illisibles"] = sorted(set(index.get("bulletins_illisibles", [])))
     for y in index["years"]:
         obj = years.get(y) or load_json(os.path.join(data_dir, f"{y}.json"), {"rows": []})
         years[y] = obj
