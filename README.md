@@ -28,11 +28,11 @@ Ou en ligne de commande : `npm install && npx netlify deploy --prod`.
 chacun avec ses dates, sa variable et son format (panel long, panel large, complet). Le fichier contient un onglet
 *Sommaire* (avec liens) puis un onglet par panel, coloré par indice / pays.
 
-**Onglet « 🏦 Obligations BRVM »** : cotations quotidiennes des obligations (lecture automatique de brvm.org chaque soir
-de semaine par la fonction planifiée `netlify/functions/brvm-daily.mts`, ou import Excel/CSV), table des caractéristiques
-(coupon, échéance, amortissement, montant émis, fiscalité, éligibilité BCEAO), taux de référence (BCEAO, UMOA-Titres),
-calcul des rendements actuariels (`public/bonds.js`) et des mesures de liquidité (part des jours sans transaction, Amihud,
-rotation), export en panel quotidien ou mensuel pour Stata / R.
+**Onglet « 🏦 Obligations BRVM »** : cotations quotidiennes des obligations cotées à la BRVM depuis 2018
+(cours, cours de référence, volume, valeur, coupon couru, valeur nominale restante, prochain coupon), lues dans les
+Bulletins Officiels de la Cote par `scripts/brvm_boc.py` et stockées dans `public/data/obligations/` (un fichier par année).
+Une tâche GitHub (`.github/workflows/obligations-brvm.yml`) ajoute chaque soir de semaine le bulletin du jour.
+Récupérer l'historique à la main : `python3 scripts/brvm_boc.py update --from 2018-01-01` (nécessite `pdftotext`, paquet poppler-utils).
 
 Les données de la base sont visibles dans Netlify sous *Data & Storage → Blobs*.
 
