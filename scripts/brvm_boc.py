@@ -39,21 +39,26 @@ COLUMNS = ["date", "symbole", "nominal", "cours_precedent", "cours", "cours_refe
 STATUT = COLUMNS.index("statut")
 
 MOIS = {"janv": 1, "fevr": 2, "févr": 2, "mars": 3, "avr": 4, "mai": 5, "juin": 6, "juil": 7, "aout": 8, "août": 8,
-        "sept": 9, "oct": 10, "nov": 11, "dec": 12, "déc": 12}
+        "sept": 9, "oct": 10, "nov": 11, "dec": 12, "déc": 12,
+        # quelques bulletins sont publiés au format anglais (« 23 May 20 »)
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, "jul": 7, "aug": 8, "sep": 9}
 
 SYMBOL = re.compile(r"^\s{0,3}([A-Z0-9]{2,12}\.[A-Z0-9]{1,5})\s+(.*)$")
-DATE_FR = re.compile(r"^(\d{1,2})-([a-zéèûô]+)\.?-(\d{2})$", re.I)
+DATE_FR = re.compile(r"^(\d{1,2})[- ]([a-zéèûô]+)\.?[- ](\d{2})$", re.I)
 AMORT = re.compile(r"^[A-Z]{1,4}$")
 PERIODE = re.compile(r"^[ASTMB]$")
 STATUS = {"NC", "SP", "ND", "NT"}  # NC = non coté (pas d'échange), SP = suspendu
 
 
-def num(tok):
-    """'10 000' -> 10000 ; '563,95' -> 563.95 ; '2 900.37' -> 2900.37 ; 'NC' -> None"""
+def num(tok, en=False):
+    """'10 000' -> 10000 ; '563,95' -> 563.95 ; '2 900.37' -> 2900.37 ; 'NC' -> None.
+    en=True (bulletin au format anglais) : '6,666' -> 6666 ; '299.24' -> 299.24"""
     t = tok.replace(" ", " ").replace(" ", "")
     if not t or t.upper() in STATUS or t == "-":
         return None
-    if "," in t and "." in t:
+    if en:
+        t = t.replace(",", "")
+    elif "," in t and "." in t:
         t = t.replace(",", "")
     else:
         t = t.replace(",", ".")
@@ -87,8 +92,8 @@ def split_vol_val(tok, prices):
     return best[1:] if best else None
 
 
-def is_num(tok):
-    return num(tok) is not None
+def is_num(tok, en=False):
+    return num(tok, en) is not None
 
 
 def date_fr(tok):
@@ -102,12 +107,14 @@ def date_fr(tok):
     return f"20{m.group(3)}-{mois:02d}-{int(m.group(1)):02d}"
 
 
-def parse_line(line):
+def parse_line(line, en=False):
     """Lit une ligne d'obligation ; None si la ligne n'en est pas une."""
     m = SYMBOL.match(line)
     if not m:
         return None
     sym, rest = m.group(1), m.group(2)
+    if sym.split(".")[1].startswith("D"):
+        return None  # droits de souscription / d'attribution (UNLC.DS1…) : ce ne sont pas des obligations
     parts = [p for p in re.split(r"\s{2,}", rest.strip()) if p]
     # repères du bulletin entre le titre et les chiffres : (*) paiement du coupon ce jour, (#) coupon couru ex-coupon…
     marks = [m for p in parts for m in re.findall(r"\(([#*]{1,2})\)", p)]
@@ -125,56 +132,72 @@ def parse_line(line):
         return None  # signature propre aux tableaux d'obligations : sans date d'échéance, ce n'est pas une ligne d'obligation
     i -= 1
     coupon_net = None
-    if i > 0 and is_num(parts[i - 1]):
-        coupon_net = num(parts[i - 1]); i -= 1
+    if i > 0 and is_num(parts[i - 1], en):
+        coupon_net = num(parts[i - 1], en); i -= 1
     periode = None
     if i > 0 and PERIODE.match(parts[i - 1]):
         periode = parts[i - 1]; i -= 1
     elif i > 0 and re.match(r"^(.+?)\s+([ASTMB])$", parts[i - 1]):  # "563,95 A" collés par un seul espace
         a, b = re.match(r"^(.+?)\s+([ASTMB])$", parts[i - 1]).groups()
         parts[i - 1] = a; periode = b
-    couru = None
     middle = parts[1:i]
     title = parts[0]
-    # le coupon couru est le dernier nombre avant la période
-    if middle and is_num(middle[-1]):
-        couru = num(middle[-1]); middle = middle[:-1]
-    # le titre peut être collé à la valeur nominale par un seul espace : on le sépare
-    if middle == [] or not (is_num(middle[0]) or middle[0].upper() in STATUS):
+    if not middle or not (is_num(middle[0], en) or middle[0].upper() in STATUS):
         return None
-    toks = middle
-    statut = next((t.upper() for t in toks if t.upper() in STATUS), None)
-    vals = toks
-    # volume et valeur collés en un seul champ (5 champs au lieu de 6, ou 4 au lieu de 5) : on les sépare
-    if not statut and len(vals) in (4, 5) and " " in vals[-1]:
-        sp = split_vol_val(vals[-1], [num(x) for x in vals[1:-1]] + [num(vals[0])])
-        if sp:
-            vals = vals[:-1] + [str(sp[0]), str(sp[1])]
-    nominal = num(vals[0])
-    prev = cours = ref = vol = val = None
-    if statut:
-        j = [t.upper() for t in vals].index(statut)
-        if j >= 2:
-            prev = num(vals[1])
-        after = vals[j + 1:]
-        if after:
-            ref = num(after[0])
-    else:
-        # échange ce jour : nominal, [précédent], cours, référence, volume, valeur
-        n = len(vals)
-        if n >= 6:
-            prev, cours, ref, vol, val = (num(x) for x in vals[1:6])
-        elif n == 5:
-            cours, ref, vol, val = (num(x) for x in vals[1:5])
-        elif n == 4:
-            prev, cours, ref = (num(x) for x in vals[1:4])
-        elif n == 3:
-            prev, ref = num(vals[1]), num(vals[2])
-        elif n == 2:
-            ref = num(vals[1])
-        statut = "T" if vol else "NC"
-        if not vol:
-            cours = None
+
+    def read(vals, couru):
+        """Interprète les champs numériques : nominal, [précédent], cours, référence, [volume, valeur]."""
+        statut = next((t.upper() for t in vals if t.upper() in STATUS), None)
+        nominal = num(vals[0], en)
+        prev = cours = ref = vol = val = None
+        if statut:
+            j = [t.upper() for t in vals].index(statut)
+            if j >= 2:
+                prev = num(vals[1], en)
+            if vals[j + 1:]:
+                ref = num(vals[j + 1], en)
+        else:
+            # volume et valeur collés en un seul champ : on les sépare
+            if len(vals) in (4, 5) and " " in vals[-1]:
+                sp = split_vol_val(vals[-1], [num(x, en) for x in vals[1:-1]] + [nominal])
+                if sp:
+                    vals = vals[:-1] + [str(sp[0]), str(sp[1])]
+            n = len(vals)
+            if n >= 6:
+                prev, cours, ref, vol, val = (num(x, en) for x in vals[1:6])
+            elif n == 5:
+                cours, ref, vol, val = (num(x, en) for x in vals[1:5])
+            elif n == 4:
+                prev, cours, ref = (num(x, en) for x in vals[1:4])
+            elif n == 3:
+                prev, ref = num(vals[1], en), num(vals[2], en)
+            elif n == 2:
+                ref = num(vals[1], en)
+            statut = "T" if vol else "NC"
+            if not vol:
+                cours = None
+        return dict(nominal=nominal, prev=prev, cours=cours, ref=ref, vol=vol, val=val, couru=couru, statut=statut)
+
+    def coherent(r):
+        prices = [x for x in (r["cours"], r["ref"], r["prev"], r["nominal"]) if x]
+        return r["statut"] != "T" or (r["vol"] and r["val"] and any(0.5 * p <= r["val"] / r["vol"] <= 2 * p for p in prices))
+
+    # le coupon couru est d'ordinaire le dernier nombre avant la période, mais il est parfois absent (sukuk…) :
+    # on garde la lecture où valeur / volume retombe sur le cours
+    options = []
+    if is_num(middle[-1], en) and len(middle) > 1:
+        options.append(read(middle[:-1], num(middle[-1], en)))
+    options.append(read(middle, None))
+    r = next((o for o in options if coherent(o)), options[0])
+    # valeur tronquée par la mise en page (« 10 650 000 0 » pour 10 650 000 000) : on rétablit les zéros perdus
+    if r["statut"] == "T" and r["vol"] and r["val"]:
+        p = r["cours"] or r["ref"]
+        if p and r["val"] / r["vol"] < 0.5 * p:
+            for k in range(1, 5):
+                if 0.9 * p <= r["val"] * 10 ** k / r["vol"] <= 1.1 * p:
+                    r["val"] *= 10 ** k
+                    break
+    nominal, prev, cours, ref, vol, val, couru, statut = (r[k] for k in ("nominal", "prev", "cours", "ref", "vol", "val", "couru", "statut"))
     return {"symbole": sym, "titre": title, "nominal": nominal, "cours_precedent": prev, "cours": cours,
             "cours_reference": ref, "volume": vol or 0, "valeur": val or 0, "coupon_couru": couru,
             "periodicite": periode, "coupon_net": coupon_net, "prochaine_echeance": echeance,
@@ -191,6 +214,8 @@ CATEGORIES = {
 def parse_text(text):
     """Toutes les lignes d'obligations d'un bulletin (texte pdftotext -layout)."""
     rows, last, category = [], None, None
+    # format anglais : dates « 23 May 20 » et milliers séparés par des virgules
+    en = bool(re.search(r"\b\d{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{2}\b", text))
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped:
@@ -204,7 +229,7 @@ def parse_text(text):
             category = CATEGORIES.get(category.replace("’", "'"), category)
             last = None
             continue
-        r = parse_line(line)
+        r = parse_line(line, en)
         if r:
             r["categorie"] = category
             rows.append(r); last = r
@@ -261,17 +286,21 @@ def candidates(day, tries=3):
 def read_bulletin(day):
     """Lignes d'obligations du BOC d'une date. None s'il n'y a pas de bulletin, "illisible" si aucun PDF n'est exploitable."""
     found = False
-    for path in candidates(day):
-        found = True
-        try:
-            rows = parse_text(pdf_to_text(path))
-            if rows:
-                return rows
-        except subprocess.CalledProcessError:
-            pass  # PDF abîmé : on essaie la variante suivante
-        finally:
-            os.remove(path)
-    return "illisible" if found else None
+    for attempt in range(2):  # un téléchargement interrompu peut donner un PDF tronqué : on réessaie une fois
+        for path in candidates(day):
+            found = True
+            try:
+                rows = parse_text(pdf_to_text(path))
+                if rows:
+                    return rows
+            except subprocess.CalledProcessError:
+                pass  # PDF abîmé : on essaie la variante suivante
+            finally:
+                os.remove(path)
+        if not found:
+            return None
+        time.sleep(2)
+    return "illisible"
 
 
 # ---------- stockage ----------
