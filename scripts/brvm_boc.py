@@ -258,11 +258,57 @@ def download(day, tries=3):
     return next(candidates(day, tries), None)
 
 
-def candidates(day, tries=3):
-    """Toutes les variantes publiées du BOC d'une date (_2, sans suffixe, _1…), chacune dans un fichier temporaire."""
+MOIS_PAGE = ["janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aout", "septembre", "octobre", "novembre", "decembre"]
+
+
+def http_get(url, tries=3):
+    for attempt in range(tries):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None
+            time.sleep(2 ** attempt)
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            time.sleep(2 ** attempt)
+    return None
+
+
+def page_pdf_urls(day):
+    """Liens PDF trouvés sur la page du bulletin du jour (« /fr/bulletin-officiel-de-la-cote-du-19-mai-2021 »).
+    Sert quand le fichier a un nom imprévisible (ex. boc_20210519_19-05-2021_a_17.37.22.pdf, en 2021)."""
+    y, m, d = day.split("-")
     stamp = day.replace("-", "")
-    for suf in SUFFIXES:
-        url = BASE.format(stamp, suf)
+    urls = []
+    for dd in dict.fromkeys((["1er"] if int(d) == 1 else []) + [str(int(d)), d]):
+        for suffix in ["", "-0", "-1"]:
+            html = http_get(f"https://www.brvm.org/fr/bulletin-officiel-de-la-cote-du-{dd}-{MOIS_PAGE[int(m) - 1]}-{y}{suffix}", tries=2)
+            if not html:
+                continue
+            for u in re.findall(r'href="([^"]+\.pdf)"', html.decode("utf-8", "replace")):
+                if stamp in u and u not in urls:
+                    urls.append(u if u.startswith("http") else "https://www.brvm.org" + u)
+        if urls:
+            break
+    return urls
+
+
+def candidates(day, tries=3):
+    """Toutes les variantes publiées du BOC d'une date (_2, sans suffixe, _1…, puis lien de la page du jour),
+    chacune dans un fichier temporaire."""
+    stamp = day.replace("-", "")
+    found = False
+    for path in _candidates_from([BASE.format(stamp, suf) for suf in SUFFIXES], tries):
+        found = True
+        yield path
+    if not found:
+        yield from _candidates_from(page_pdf_urls(day), tries)
+
+
+def _candidates_from(urls, tries):
+    for url in urls:
         for attempt in range(tries):
             try:
                 req = urllib.request.Request(url, headers={"User-Agent": UA})
@@ -319,12 +365,14 @@ def save_json(path, obj):
     os.replace(tmp, path)
 
 
-def update(start, end, data_dir, workers=4, verbose=True):
+def update(start, end, data_dir, workers=4, verbose=True, retry=False):
     os.makedirs(data_dir, exist_ok=True)
     index_path = os.path.join(data_dir, "index.json")
     index = load_json(index_path, {"columns": COLUMNS, "years": [], "seances": [], "sans_bulletin": [], "obligations": {}})
     index.setdefault("bulletins_illisibles", [])
-    done = set(index["seances"]) | set(index["sans_bulletin"]) | set(index["bulletins_illisibles"])
+    done = set(index["seances"]) | set(index["bulletins_illisibles"])
+    if not retry:  # --reessayer : on retente aussi les jours marqués « sans bulletin »
+        done |= set(index["sans_bulletin"])
     years = {}
     today = dt.date.today()
     days = []
@@ -345,7 +393,7 @@ def update(start, end, data_dir, workers=4, verbose=True):
                     print(day, "bulletin publié mais illisible (PDF abîmé)")
             elif rows is None:
                 # jour férié ou bulletin pas encore publié : on ne mémorise l'absence qu'après quelques jours
-                if (today - d).days > 4:
+                if (today - d).days > 4 and day not in index["sans_bulletin"]:
                     index["sans_bulletin"].append(day)
                 if verbose:
                     print(day, "pas de bulletin")
@@ -362,6 +410,7 @@ def update(start, end, data_dir, workers=4, verbose=True):
                     info["premiere"] = min(info["premiere"], day)
                     info["derniere"] = max(info["derniere"], day)
                 index["seances"].append(day)
+                index["sans_bulletin"] = [x for x in index["sans_bulletin"] if x != day]
                 added += 1
                 traded = sum(1 for r in rows if r["statut"] == "T")
                 if verbose:
@@ -402,6 +451,7 @@ def main():
     u.add_argument("--from", dest="start", help="date de début (AAAA-MM-JJ), par défaut 10 jours avant la dernière séance")
     u.add_argument("--to", dest="end", help="date de fin (AAAA-MM-JJ), par défaut aujourd'hui")
     u.add_argument("--data", default=DATA_DIR)
+    u.add_argument("--reessayer", action="store_true", help="retente aussi les jours marqués « sans bulletin »")
     p = sub.add_parser("parse", help="affiche les obligations lues dans un bulletin PDF")
     p.add_argument("pdf")
     args = ap.parse_args()
@@ -420,7 +470,7 @@ def main():
     else:
         start = dt.date.today() - dt.timedelta(days=30)
     end = dt.date.fromisoformat(args.end) if args.end else dt.date.today()
-    n = update(start, end, args.data)
+    n = update(start, end, args.data, retry=args.reessayer)
     print(f"{n} séance(s) ajoutée(s)")
 
 
