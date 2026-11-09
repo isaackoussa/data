@@ -1170,6 +1170,12 @@ async function obInit() {
   const n = Object.keys(OB_INDEX.obligations).length;
   $("obInfo").innerHTML = `Source : <b>Bulletins Officiels de la Cote</b> de la BRVM, lus automatiquement chaque soir de semaine.
     <b>${n}</b> obligations, <b>${seances.length}</b> séances du ${seances[0]} au <b>${last}</b> (mise à jour : ${esc(OB_INDEX.mise_a_jour || "")}).`;
+  // années où il manque bien plus de bulletins que les seuls jours fériés (~15 par an)
+  const miss = {};
+  [...OB_INDEX.sans_bulletin, ...(OB_INDEX.bulletins_illisibles || [])].forEach((d) => (miss[d.slice(0, 4)] = (miss[d.slice(0, 4)] || 0) + 1));
+  const gaps = Object.entries(miss).filter(([, k]) => k > 30);
+  if (gaps.length) $("obInfo").innerHTML += `<br>⚠️ Bulletins introuvables sur brvm.org : ${gaps.map(([y, k]) => `${k} jours de bourse en ${y}`).join(", ")}
+    (jours fériés compris). En 2021, il manque surtout la période de mai à novembre.`;
   const cats = [...new Set(Object.values(OB_INDEX.obligations).map((o) => o.categorie || "Autres"))].sort((a, b) => a.localeCompare(b, "fr"));
   $("obCat").innerHTML = '<option value="">Toutes</option>' + cats.map((c) => `<option>${esc(c)}</option>`).join("");
   const d = new Date(last); d.setFullYear(d.getFullYear() - 1);
@@ -1293,7 +1299,7 @@ $("obXlsx").onclick = async () => {
       { colonne: "periodicite", description: "A annuel, S semestriel, T trimestriel" },
       { colonne: "coupon_net / prochaine_echeance", description: "montant net et date du prochain coupon" },
       { colonne: "amortissement", description: "AC amortissement constant, ACD constant avec différé, IF in fine" },
-      { colonne: "detachement", description: "1 si un coupon est détaché ce jour" },
+      { colonne: "marque", description: "repère du bulletin : * = paiement du coupon ce jour, # = coupon couru ex-coupon" },
       { colonne: "source", description: "Bulletins Officiels de la Cote de la BRVM (brvm.org)" },
     ], {}), "lisez-moi");
     XLSX.writeFile(wb, safeName(b.name) + ".xlsx");

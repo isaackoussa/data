@@ -35,7 +35,7 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "publi
 
 # Colonnes d'une ligne de données (fichiers annuels)
 COLUMNS = ["date", "symbole", "nominal", "cours_precedent", "cours", "cours_reference", "volume", "valeur",
-           "coupon_couru", "periodicite", "coupon_net", "prochaine_echeance", "amortissement", "statut", "detachement"]
+           "coupon_couru", "periodicite", "coupon_net", "prochaine_echeance", "amortissement", "statut", "marque"]
 STATUT = COLUMNS.index("statut")
 
 MOIS = {"janv": 1, "fevr": 2, "févr": 2, "mars": 3, "avr": 4, "mai": 5, "juin": 6, "juil": 7, "aout": 8, "août": 8,
@@ -64,6 +64,29 @@ def num(tok):
     return int(v) if v.is_integer() else v
 
 
+def split_vol_val(tok, prices):
+    """Volume et valeur collés par une seule espace (« 150 050 1 519 255 000 ») : on cherche la coupure
+    pour laquelle valeur / volume retombe sur l'un des cours de la ligne (à 15 % près)."""
+    groups = tok.replace("\u00a0", " ").split(" ")
+    if len(groups) < 2 or not all(g.isdigit() for g in groups):
+        return None
+    best = None
+    for k in range(1, len(groups)):
+        left, right = groups[:k], groups[k:]
+        # chaque nombre : premier groupe de 1 à 3 chiffres, puis des groupes de 3 chiffres
+        if any(len(g) != 3 for g in left[1:] + right[1:]) or len(left[0]) > 3 or len(right[0]) > 3:
+            continue
+        vol, val = int("".join(left)), int("".join(right))
+        if vol <= 0:
+            continue
+        for p in prices:
+            if p and abs(val / vol - p) <= 0.15 * p:
+                err = abs(val / vol - p) / p
+                if best is None or err < best[0]:
+                    best = (err, vol, val)
+    return best[1:] if best else None
+
+
 def is_num(tok):
     return num(tok) is not None
 
@@ -86,9 +109,10 @@ def parse_line(line):
         return None
     sym, rest = m.group(1), m.group(2)
     parts = [p for p in re.split(r"\s{2,}", rest.strip()) if p]
-    # « (*) » entre le titre et les chiffres : détachement de coupon ce jour (la date d'échéance est celle de la séance)
-    detachement = 1 if any(p.strip() == "(*)" for p in parts) or re.search(r"\s\(\*\)$", parts[0] if parts else "") else 0
-    parts = [re.sub(r"\s*\(\*\)$", "", p) for p in parts if p.strip() != "(*)"]
+    # repères du bulletin entre le titre et les chiffres : (*) paiement du coupon ce jour, (#) coupon couru ex-coupon…
+    marks = [m for p in parts for m in re.findall(r"\(([#*]{1,2})\)", p)]
+    marque = marks[0] if marks else None
+    parts = [re.sub(r"\s*\([#*]{1,2}\)$", "", p) for p in parts if not re.fullmatch(r"\([#*]{1,2}\)", p.strip())]
     if len(parts) < 4:
         return None
     # fin de ligne : ... couru  période  montant  échéance  amortissement
@@ -121,6 +145,11 @@ def parse_line(line):
     toks = middle
     statut = next((t.upper() for t in toks if t.upper() in STATUS), None)
     vals = toks
+    # volume et valeur collés en un seul champ (5 champs au lieu de 6, ou 4 au lieu de 5) : on les sépare
+    if not statut and len(vals) in (4, 5) and " " in vals[-1]:
+        sp = split_vol_val(vals[-1], [num(x) for x in vals[1:-1]] + [num(vals[0])])
+        if sp:
+            vals = vals[:-1] + [str(sp[0]), str(sp[1])]
     nominal = num(vals[0])
     prev = cours = ref = vol = val = None
     if statut:
@@ -149,7 +178,14 @@ def parse_line(line):
     return {"symbole": sym, "titre": title, "nominal": nominal, "cours_precedent": prev, "cours": cours,
             "cours_reference": ref, "volume": vol or 0, "valeur": val or 0, "coupon_couru": couru,
             "periodicite": periode, "coupon_net": coupon_net, "prochaine_echeance": echeance,
-            "amortissement": amort, "statut": statut, "detachement": detachement}
+            "amortissement": amort, "statut": statut, "marque": marque}
+
+
+CATEGORIES = {
+    "OBLIGATIONS D'ETAT": "OBLIGATIONS SOUVERAINES",
+    "OBLIGATIONS REGIONALES": "OBLIGATIONS D’INSTITUTIONS FINANCIÈRES RÉGIONALES ET INTERNATIONALES",
+    "OBLIGATIONS PRIVEES": "OBLIGATIONS D’ENTREPRISES",
+}
 
 
 def parse_text(text):
@@ -165,6 +201,7 @@ def parse_text(text):
                 and not re.search(r"\d{2,}", stripped.split(" ", 1)[-1] if re.match(r"^\d\.", stripped) else stripped) \
                 and len(stripped) < 90:
             category = re.sub(r"^\d\.\s+", "", stripped).strip()
+            category = CATEGORIES.get(category.replace("’", "'"), category)
             last = None
             continue
         r = parse_line(line)
@@ -253,7 +290,7 @@ def save_json(path, obj):
     os.replace(tmp, path)
 
 
-def update(start, end, data_dir, sleep=0.3, verbose=True):
+def update(start, end, data_dir, workers=4, verbose=True):
     os.makedirs(data_dir, exist_ok=True)
     index_path = os.path.join(data_dir, "index.json")
     index = load_json(index_path, {"columns": COLUMNS, "years": [], "seances": [], "sans_bulletin": [], "obligations": {}})
@@ -261,12 +298,18 @@ def update(start, end, data_dir, sleep=0.3, verbose=True):
     done = set(index["seances"]) | set(index["sans_bulletin"]) | set(index["bulletins_illisibles"])
     years = {}
     today = dt.date.today()
+    days = []
     d = start
-    added = 0
     while d <= end:
-        day = d.isoformat()
-        if d.weekday() < 5 and day not in done:
-            rows = read_bulletin(day)
+        if d.weekday() < 5 and d.isoformat() not in done:
+            days.append(d)
+        d += dt.timedelta(days=1)
+    added = 0
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        # téléchargement et lecture en parallèle, enregistrement dans l'ordre des dates
+        for d, rows in zip(days, pool.map(lambda x: read_bulletin(x.isoformat()), days)):
+            day = d.isoformat()
             if rows == "illisible":
                 index["bulletins_illisibles"].append(day)
                 if verbose:
@@ -294,10 +337,8 @@ def update(start, end, data_dir, sleep=0.3, verbose=True):
                 traded = sum(1 for r in rows if r["statut"] == "T")
                 if verbose:
                     print(day, f"{len(rows)} obligations, {traded} échangées", flush=True)
-                if added % 20 == 0:
+                if added % 50 == 0:
                     _flush(index, years, data_dir)
-                time.sleep(sleep)
-        d += dt.timedelta(days=1)
     _flush(index, years, data_dir)
     return added
 

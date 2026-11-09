@@ -1,0 +1,34 @@
+# Chaque soir de semaine : lit le Bulletin Officiel de la Cote de la BRVM et ajoute les cotations
+# des obligations dans public/data/obligations/. Le commit déclenche le redéploiement Netlify.
+name: Obligations BRVM
+
+on:
+  schedule:
+    - cron: "40 19 * * 1-5"   # 19 h 40 UTC = 19 h 40 à Abidjan (GMT toute l'année), après publication du bulletin
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: obligations-brvm
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer pdftotext
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+      - name: Lire les bulletins manquants
+        run: python3 scripts/brvm_boc.py update
+      - name: Enregistrer
+        run: |
+          if git diff --quiet -- public/data/obligations; then echo "Rien de nouveau"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/obligations
+          git commit -m "Obligations BRVM : bulletin du $(date -u +%Y-%m-%d)"
+          git push
